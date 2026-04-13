@@ -1,5 +1,9 @@
 
+GPIODATA: .equ 0x3FC 	; Read/Write pins
 
+
+score:				.byte 0 ; user score
+lives:				.byte 0 ; user lives
 
 
 	.text
@@ -21,8 +25,8 @@
 	.global Switch_Handler
 	.global Timer_Handler
 
-
-
+ptr_to_lives:		.word lives
+ptr_to_score:		.word score
 
 lab7:
 	PUSH {r4-r12, lr}
@@ -31,6 +35,11 @@ lab7:
 	BL uart_interrupt_init
 	BL gpio_interrupt_init
 	BL timer_interrupt_init
+
+	; Set lives to 4, use Mask
+	MOV r4, #0x0F
+	LDR r0, ptr_to_lives
+	STRB r4, [r0]
 
 
 
@@ -78,6 +87,34 @@ Timer_Handler:
 	BX lr
 
 
+
+LOSE_LIFE: ; Checks how many lives, then removes a life
+	; Add some sort of pause when life taken
+
+	LDRB r4, ptr_to_lives
+	CMP r4, #2				; Check if lives are <= 1
+	BLT YOU_LOSE			; If less than 1, lose the game
+
+	LSR r4, r4, #1			; Shift right 1 byte, changes mask for LEDs
+	STRB r4, ptr_to_lives	; Store the new lives count
+
+	MOV pc, lr
+
+POINTS: ; Point counter
+
+RGB_LED: ; Indicate when power pellet is active
+
+	MOV r4, #0x5000 		; Base address of PORT F
+	MOVT r4, #0x4002
+
+	LDRB r5, [r4, #GPIODATA]; Data Register
+	ORR r5, r5, #0x004
+	STRB r5, [r4, #GPIODATA]
+
+	MOV pc, lr
+
+YOU_LOSE:
+	; lose
 
 
 	.end
