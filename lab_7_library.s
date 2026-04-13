@@ -54,10 +54,13 @@ GPIOICR: 	.equ 0x41C		; GPIO Interrupt Clear Register
 	.text
 	.global uart_init
 	.global uart_interrupt_init
+	.global uart_clear_interrupt
 	.global gpio_init
 	.global gpio_interrupt_init
+	.global switch_clear_interrupt
 	.global timer_init
 	.global timer_interrupt_init
+	.global timer_clear_interrupt
 	.global simple_read_character
 	.global output_character
 	.global read_string
@@ -147,6 +150,22 @@ uart_interrupt_init:
 	LDR r5, [r4, #EN0]
 	ORR r5, r5, #UART_EN0M
 	STR r5, [r4, #EN0]
+
+	POP {r4-r12,lr}
+	MOV pc, lr
+
+
+
+
+; Clear UART0 Interrupt
+uart_clear_interrupt:
+	PUSH {r4-r12, lr}
+
+	MOV r4, #0xC000
+	MOVT r4, #0x4000
+	LDR r5, [r4, #UARTICR]
+	ORR r5, r5, #RXIC
+	STR r5, [r4, #UARTICR]
 
 	POP {r4-r12,lr}
 	MOV pc, lr
@@ -251,6 +270,22 @@ gpio_interrupt_init:
 
 
 
+; Clear Switch Interrupt
+switch_clear_interrupt:
+	PUSH {r4-r12, lr}
+
+	MOV r4, #0x5000
+	MOVT r4, #0x4002
+	LDR r5, [r4, #GPIOICR]
+	ORR r5, r5, #SW1
+	STR r5, [r4, #GPIOICR]
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+
 timer_init:
 	PUSH {r4-r12, lr}
 
@@ -317,6 +352,54 @@ Enable_Timer:
 	LDR r5, [r4, #GPTMCTL]
 	ORR r5, r5, #TATOIM
 	STR r5, [r4, #GPTMCTL]		; Write 1 to TAEN
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+
+; Clear Timer Interrupt
+timer_clear_interrupt:
+	PUSH {r4-r12, lr}
+
+	MOV r4, #0x0000
+	MOVT r4, #0x4003
+	LDR r5, [r4, #GPTMICR]
+	ORR r5, r5, #TATOIM
+	STR r5, [r4, #GPTMICR]
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+
+; disables the Timer (pauses the game)
+pause_timer:
+	PUSH {r4-r12, lr}
+
+	MOV r4, #0x0000
+	MOVT r4, #0x4003
+	LDR r5, [r4, #GPTMCTL]
+	BIC r5, r5, #TATOIM
+	STR r5, [r4, #GPTMCTL]
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+
+; enables the Timer (resumes the game)
+enable_timer:
+	PUSH {r4-r12, lr}
+
+	MOV r4, #0x0000
+	MOVT r4, #0x4003
+	LDR r5, [r4, #GPTMCTL]
+	ORR r5, r5, #TATOIM
+	STR r5, [r4, #GPTMCTL]
 
 	POP {r4-r12, lr}
 	MOV pc, lr
