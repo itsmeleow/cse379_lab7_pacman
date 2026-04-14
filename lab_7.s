@@ -157,7 +157,6 @@ RESET_POWER_PELLET:
 	LDR r0, ptr_to_pwr_tmr
 	STRB r4, [r0]
 	LDR r0, ptr_to_pwr_active
-	MOV r4, #20				; 20 ticks for 5 seconds, decrement when active
 	STRB r4, [r0]
 
 
@@ -301,6 +300,9 @@ GAIN_POWER: ; Indicate when power pellet is active
 	LDRB r5, ptr_to_pwr_active
 	MOV r6, #1
 	STRB r6, [r5]			; Set power to 1, = power activated
+	LDRB r5, ptr_to_pwr_tmr
+	MOV r6, #20
+	STRB r6, [r5]			; Set timer to 20 ticks (5 seconds), resets everytime power eaten
 
 	LDRB r5, [r4, #GPIODATA]; Data Register
 	ORR r5, r5, #0x004		; Set blue
@@ -312,17 +314,25 @@ GAIN_POWER: ; Indicate when power pellet is active
 
 DECREMENT_COUNTER:
 
-	LDRB r5, ptr_to_pwr_tmr		; Decrement power timer
+	MOV r8, #0x5000				; PORT F Base Address
+	MOVT r8, #0x4002
+	LDRB r5, ptr_to_pwr_tmr
+	MOV r9, #0					; r9 used for LED register mask and cmp tick = 0
+
+	CMP r5, r9					; If power ran out
+	BNE STILLACTIVE
+	STRB r9, [r8, #GPIODATA]	; Power ran out, set LED to OFF
+	B DECREMENT_DONE
+
+STILLACTIVE:					; Decrement power timer
 	SUB r6, r5, #1
 	STRB r6, [r5]
 
-	CMP r5, #11					; Checks if 5 seconds left (<=10 ticks)
+	CMP r5, #10					; Checks if 5 seconds left (>10 ticks)
 	BGT DECREMENT_DONE
 
-	MOV r6, #0x5000				; PORT F Base Address
-	MOVT r6, #0x4002
 	MOV r7, #0x002				; r7 holds RED LED mask
-	STRBLT r7, [r6, #GPIODATA]	; Set LED to RED
+	STRB r7, [r8, #GPIODATA]	; Set LED to RED
 
 DECREMENT_DONE:
 
