@@ -322,6 +322,8 @@ DECREMENT_COUNTER:
 	CMP r5, r9					; If power ran out
 	BNE STILLACTIVE
 	STRB r9, [r8, #GPIODATA]	; Power ran out, set LED to OFF
+	LDRB r5, ptr_to_pwr_active
+	STRB r9, [r5]				; Set power = 0, NO POWER
 	B DECREMENT_DONE
 
 STILLACTIVE:					; Decrement power timer
