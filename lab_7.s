@@ -4,7 +4,8 @@ GPIODATA: .equ 0x3FC 	; Read/Write pins
 
 score:				.byte 0 ; user score
 lives:				.byte 0 ; user lives
-
+pwr_tmr:		    .byte 0 ; timer for power pellet
+pwr_active:			.byte 0 ; 0 = no power, 1 = power pellet eaten
 
 	.text
 	.global uart_init
@@ -20,13 +21,14 @@ lives:				.byte 0 ; user lives
 	.global output_character
 	.global read_string
 	.global output_string
-
 	.global UART0_Handler
 	.global Switch_Handler
 	.global Timer_Handler
 
 ptr_to_lives:		.word lives
 ptr_to_score:		.word score
+ptr_to_pwr_tmr:  	.word pellet_tmr
+ptr_to_pwr_active:	.word pwr_active
 
 lab7:
 	PUSH {r4-r12, lr}
@@ -42,6 +44,13 @@ lab7:
 	STRB r4, [r0]
 
 
+	; Set pellet timer to 0, used for reset in later implementations
+RESET_POWER_PELLET:
+	MOV r4, #0
+	LDR r0, ptr_to_pwr_tmr
+	STRB r4, [r0]
+	LDR r0, ptr_to_pwr_active
+	STRB r4, [r0]
 
 
 	POP {r4-r12, lr}
@@ -111,10 +120,17 @@ RGB_LED: ; Indicate when power pellet is active
 	ORR r5, r5, #0x004
 	STRB r5, [r4, #GPIODATA]
 
+	; After 5 seconds it is red.
+
 	MOV pc, lr
+
+
 
 YOU_LOSE:
 	; lose
+
+NEXT_STAGE:
+	; next stage
 
 
 	.end
