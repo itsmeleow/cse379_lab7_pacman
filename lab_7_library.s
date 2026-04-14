@@ -34,7 +34,7 @@ TATOIM:		.equ 0x001		; Timer A Time Out Interrupt Mask (bit 0) (Disable 0 / Enab
 GPTMCTL:	.equ 0x00C		; Enable Timer (Disable 0 / Enable 1)
 GPTMICR:	.equ 0x024 		; GPTM Interrupt Register Clear
 
-; GPIO PORT F - Base 0x40025000
+; GPIO PORT F - Base 0x40025000 | GPIO PORT B - Base 0x40005000
 GPIODIR:	.equ 0x400		; Data Direction Register
 GPIODEN:	.equ 0x51C		; Enable Each Pin (8 bit) Digital I/O
 GPIOPUR:	.equ 0x510 		; Enable Pull-Up Resistor for GPIO Pin
@@ -43,6 +43,8 @@ RED:		.equ 0x002 		; RED LED Mask - Port F, Pin 1 (Bit 1)
 BLUE:		.equ 0x004		; BLUE LED Mask - Port F, Pin 2 (Bit 2)
 GREEN:		.equ 0x008 		; GREEN LED Mask - Port F, Pin 3 (Bit 3)
 SW1:		.equ 0x010		; Switch 1 Mask - Port F, Pin 4 (Bit 4)
+GPIO_ALICE: .equ 0x00F		; RED LED Mask - Port B, Pin 0-3 (Bit 1-4)
+
 ; GPIO Interrupts
 GPIOIS:		.equ 0x404		; GPIO Interrupt Sense Register (Edge Sens 0 / Level Sens 1)
 GPIOIBE:	.equ 0x408		; GPIO Interrupt Both Edges Regiser (GPIOEV 0 / Both 1)
@@ -129,6 +131,8 @@ uart_init:
 	ORR r5, r5, #0x11
 	STR r5, [r4] 	;configure pa0 and pa1
 
+	MOV r4,
+
 	POP {r4-r12,lr}  	; Restore registers from stack
 	MOV pc, lr
 
@@ -213,6 +217,16 @@ wait_enable_gpio:
 	ORR r5, r5, #GREEN
 	ORR r5, r5, #SW1
 	STR r5, [r4, #GPIODEN]
+
+	; Port B Base Address
+	MOV r4, #0x4000
+	MOVT r4, #0x5000
+
+	; Set RED for all LEDs
+	LDR r5, [r4, #GPIODATA]
+	ORR r5, #GPIO_ALICE
+	STR r5, [r4, #GPIODATA]
+
 
 	POP {r4-r12,lr}
 	MOV pc, lr
