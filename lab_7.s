@@ -15,6 +15,8 @@ white:		.string 27, "[38;5;252m", 0
 black_bg:	.string 27, "[48;5;0m", 0
 blue_bg:	.string 27, "[48;5;12m", 0
 cyan_bg:	.string 27, "[48;5;50m", 0
+GPIODATA: .equ 0x3FC 	; Read/Write pins
+
 
 ; LOOKUP TABLES [LUT]
 ; here we use a lookup table to easily change colors
@@ -81,14 +83,13 @@ board:
 paused:		.byte 0			; stores game pause state
 									; 0 - not paused
 									; 1 - paused
-
-GPIODATA: .equ 0x3FC 	; Read/Write pins
-
-
 score:				.byte 0 ; user score
 lives:				.byte 0 ; user lives
 pwr_tmr:		    .byte 0 ; timer for power pellet
 pwr_active:			.byte 0 ; 0 = no power, 1 = power pellet eaten
+
+
+
 
 	.text
 	; imported subroutines from lab 7 library
@@ -107,12 +108,9 @@ pwr_active:			.byte 0 ; 0 = no power, 1 = power pellet eaten
 	.global output_character
 	.global read_string
 	.global output_string
-<<<<<<< HEAD
-=======
 
 	; subroutines in current file
 	.global lab7
->>>>>>> 5f229f5355015e8ec63b8ade592c5e8c553c606d
 	.global UART0_Handler
 	.global Switch_Handler
 	.global Timer_Handler
@@ -136,7 +134,7 @@ ptr_to_paused:			.word paused
 
 ptr_to_lives:		.word lives
 ptr_to_score:		.word score
-ptr_to_pwr_tmr:  	.word pellet_tmr
+ptr_to_pwr_tmr:  	.word pwr_tmr
 ptr_to_pwr_active:	.word pwr_active
 
 lab7:
@@ -153,22 +151,18 @@ lab7:
 	LDR r0, ptr_to_lives
 	STRB r4, [r0]
 
-
-<<<<<<< HEAD
-	; Set pellet timer to 0, used for reset in later implementations
+	; Set pellet timer to 0, reset power timer
 RESET_POWER_PELLET:
 	MOV r4, #0
 	LDR r0, ptr_to_pwr_tmr
 	STRB r4, [r0]
 	LDR r0, ptr_to_pwr_active
+	MOV r4, #20				; 20 ticks for 5 seconds, decrement when active
 	STRB r4, [r0]
-=======
+
+
 	POP {r4-r12, lr}
 	MOV pc, lr
->>>>>>> 5f229f5355015e8ec63b8ade592c5e8c553c606d
-
-
-
 
 ; output the game board to the screen
 ; we will go through the map array we defined
@@ -275,7 +269,24 @@ Timer_Handler:
 	; clear timer interrupt
 	BL timer_clear_interrupt
 
+	LDRB r5, ptr_to_pwr_active	; Check if power is active
+	CMP r5, #0
+	BNE NOTACTIVE
 
+	LDRB r5, ptr_to_pwr_tmr		; Decrement power timer
+	SUB r6, r5, #1
+	STRB r6, [r5]
+
+	MOV r6, #0x5000				; PORT F Base Address
+	MOVT r6, #0x4002
+	MOV r7, #0x002				; r7 holds RED LED mask
+
+	CMP r5, #11					; Checks if 5 seconds left (<=10 ticks)
+	ITTT LT
+	STRBLT r7, [r6, #GPIODATA]	; Set LED to RED
+
+
+NOTACTIVE:
 
 	POP {r4-r12, lr}
 	BX lr
@@ -296,13 +307,17 @@ LOSE_LIFE: ; Checks how many lives, then removes a life
 
 POINTS: ; Point counter
 
-RGB_LED: ; Indicate when power pellet is active
+GAIN_POWER: ; Indicate when power pellet is active
 
 	MOV r4, #0x5000 		; Base address of PORT F
 	MOVT r4, #0x4002
 
+	LDRB r5, ptr_to_pwr_active
+	MOV r6, #1
+	STRB r6, [r5]			; Set power to 1, = power activated
+
 	LDRB r5, [r4, #GPIODATA]; Data Register
-	ORR r5, r5, #0x004
+	ORR r5, r5, #0x004		; Set blue
 	STRB r5, [r4, #GPIODATA]
 
 	; After 5 seconds it is red.
