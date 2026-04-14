@@ -335,9 +335,9 @@ Periodic_Mode:
 	STR r5, [r4, #GPTMTAMR]		; Writing 2 to TAMR
 
 Interval_Period:
-	MOV r5, #0x2400
-	MOVT r5, #0x00F4			; 16 MHz in hex (16,000,000)
-	STR r5, [r4, #GPTMTAILR]	; Writing Interval
+	MOV r5, #0x0900
+	MOVT r5, #0x003D			; 4 MHz in hex (4,000,000)
+	STR r5, [r4, #GPTMTAILR]	; Writing Interval, .25 seconds
 
 	POP {r4-r12, lr}
 	MOV pc, lr

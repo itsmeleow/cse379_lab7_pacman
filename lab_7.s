@@ -15,6 +15,8 @@ white:		.string 27, "[38;5;252m", 0
 black_bg:	.string 27, "[48;5;0m", 0
 blue_bg:	.string 27, "[48;5;12m", 0
 cyan_bg:	.string 27, "[48;5;50m", 0
+GPIODATA: .equ 0x3FC 	; Read/Write pins
+
 
 ; LOOKUP TABLES [LUT]
 ; here we use a lookup table to easily change colors
@@ -81,12 +83,12 @@ board:
 paused:		.byte 0			; stores game pause state
 									; 0 - not paused
 									; 1 - paused
-
-GPIODATA: .equ 0x3FC 	; Read/Write pins
-
-
 score:				.byte 0 ; user score
 lives:				.byte 0 ; user lives
+pwr_tmr:		    .byte 0 ; timer for power pellet
+pwr_active:			.byte 0 ; 0 = no power, 1 = power pellet eaten
+
+
 
 
 	.text
@@ -132,6 +134,8 @@ ptr_to_paused:			.word paused
 
 ptr_to_lives:		.word lives
 ptr_to_score:		.word score
+ptr_to_pwr_tmr:  	.word pwr_tmr
+ptr_to_pwr_active:	.word pwr_active
 
 lab7:
 	PUSH {r4-r12, lr}
@@ -147,12 +151,17 @@ lab7:
 	LDR r0, ptr_to_lives
 	STRB r4, [r0]
 
+	; Set pellet timer to 0, reset power timer
+RESET_POWER_PELLET:
+	MOV r4, #0
+	LDR r0, ptr_to_pwr_tmr
+	STRB r4, [r0]
+	LDR r0, ptr_to_pwr_active
+	STRB r4, [r0]
+
 
 	POP {r4-r12, lr}
 	MOV pc, lr
-
-
-
 
 ; output the game board to the screen
 ; we will go through the map array we defined
@@ -259,6 +268,9 @@ Timer_Handler:
 	; clear timer interrupt
 	BL timer_clear_interrupt
 
+	LDRB r5, ptr_to_pwr_active	; Check if power is active
+	CMP r5, #1
+	BEQ DECREMENT_COUNTER		; Decrement counter if it is active
 
 
 	POP {r4-r12, lr}
@@ -280,19 +292,59 @@ LOSE_LIFE: ; Checks how many lives, then removes a life
 
 POINTS: ; Point counter
 
-RGB_LED: ; Indicate when power pellet is active
+GAIN_POWER: ; Indicate when power pellet is active
 
 	MOV r4, #0x5000 		; Base address of PORT F
 	MOVT r4, #0x4002
 
+	LDRB r5, ptr_to_pwr_active
+	MOV r6, #1
+	STRB r6, [r5]			; Set power to 1, = power activated
+	LDRB r5, ptr_to_pwr_tmr
+	MOV r6, #20
+	STRB r6, [r5]			; Set timer to 20 ticks (5 seconds), resets everytime power eaten
+
 	LDRB r5, [r4, #GPIODATA]; Data Register
-	ORR r5, r5, #0x004
+	ORR r5, r5, #0x004		; Set blue
 	STRB r5, [r4, #GPIODATA]
+
+	; After 5 seconds it is red.
+
+	MOV pc, lr
+
+DECREMENT_COUNTER:
+
+	MOV r8, #0x5000				; PORT F Base Address
+	MOVT r8, #0x4002
+	LDRB r5, ptr_to_pwr_tmr
+	MOV r9, #0					; r9 used for LED register mask and cmp tick = 0
+
+	CMP r5, r9					; If power ran out
+	BNE STILLACTIVE
+	STRB r9, [r8, #GPIODATA]	; Power ran out, set LED to OFF
+	LDRB r5, ptr_to_pwr_active
+	STRB r9, [r5]				; Set power = 0, NO POWER
+	B DECREMENT_DONE
+
+STILLACTIVE:					; Decrement power timer
+	SUB r6, r5, #1
+	STRB r6, [r5]
+
+	CMP r5, #10					; Checks if 5 seconds left (>10 ticks)
+	BGT DECREMENT_DONE
+
+	MOV r7, #0x002				; r7 holds RED LED mask
+	STRB r7, [r8, #GPIODATA]	; Set LED to RED
+
+DECREMENT_DONE:
 
 	MOV pc, lr
 
 YOU_LOSE:
 	; lose
+
+NEXT_STAGE:
+	; next stage
 
 
 	.end
