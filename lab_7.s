@@ -268,8 +268,9 @@ Timer_Handler:
 	; clear timer interrupt
 	BL timer_clear_interrupt
 
-	LDRB r5, ptr_to_pwr_active	; Check if power is active
-	CMP r5, #1
+	LDR r5, ptr_to_pwr_active	; Check if power is active
+	LDRB r6, [r5]
+	CMP r6, #1
 	BEQ DECREMENT_COUNTER		; Decrement counter if it is active
 
 
@@ -281,12 +282,13 @@ Timer_Handler:
 LOSE_LIFE: ; Checks how many lives, then removes a life
 	; Add some sort of pause when life taken
 
-	LDRB r4, ptr_to_lives
-	CMP r4, #2				; Check if lives are <= 1
+	LDR r4, ptr_to_lives
+	LDRB r5, [r4]
+	CMP r5, #2				; Check if lives are <= 1
 	BLT YOU_LOSE			; If less than 1, lose the game
 
-	LSR r4, r4, #1			; Shift right 1 byte, changes mask for LEDs
-	STRB r4, ptr_to_lives	; Store the new lives count
+	LSR r5, r5, #1			; Shift right 1 byte, changes mask for LEDs
+	STRB r5, [r4]			; Store the new lives count
 
 	MOV pc, lr
 
@@ -297,10 +299,10 @@ GAIN_POWER: ; Indicate when power pellet is active
 	MOV r4, #0x5000 		; Base address of PORT F
 	MOVT r4, #0x4002
 
-	LDRB r5, ptr_to_pwr_active
+	LDR r5, ptr_to_pwr_active
 	MOV r6, #1
 	STRB r6, [r5]			; Set power to 1, = power activated
-	LDRB r5, ptr_to_pwr_tmr
+	LDR r5, ptr_to_pwr_tmr
 	MOV r6, #20
 	STRB r6, [r5]			; Set timer to 20 ticks (5 seconds), resets everytime power eaten
 
@@ -316,21 +318,23 @@ DECREMENT_COUNTER:
 
 	MOV r8, #0x5000				; PORT F Base Address
 	MOVT r8, #0x4002
-	LDRB r5, ptr_to_pwr_tmr
+	LDR r5, ptr_to_pwr_tmr
+	LDRB r10, [r5]				; r10 holds tick count
 	MOV r9, #0					; r9 used for LED register mask and cmp tick = 0
 
-	CMP r5, r9					; If power ran out
+POWEROUT:						; If power ran out
+	CMP r10, r9
 	BNE STILLACTIVE
 	STRB r9, [r8, #GPIODATA]	; Power ran out, set LED to OFF
-	LDRB r5, ptr_to_pwr_active
+	LDR r5, ptr_to_pwr_active
 	STRB r9, [r5]				; Set power = 0, NO POWER
 	B DECREMENT_DONE
 
 STILLACTIVE:					; Decrement power timer
-	SUB r6, r5, #1
+	SUB r6, r10, #1
 	STRB r6, [r5]
 
-	CMP r5, #10					; Checks if 5 seconds left (>10 ticks)
+	CMP r10, #10				; Checks if 5 seconds left (>10 ticks)
 	BGT DECREMENT_DONE
 
 	MOV r7, #0x002				; r7 holds RED LED mask
