@@ -270,23 +270,9 @@ Timer_Handler:
 	BL timer_clear_interrupt
 
 	LDRB r5, ptr_to_pwr_active	; Check if power is active
-	CMP r5, #0
-	BNE NOTACTIVE
+	CMP r5, #1
+	BEQ DECREMENT_COUNTER		; Decrement counter if it is active
 
-	LDRB r5, ptr_to_pwr_tmr		; Decrement power timer
-	SUB r6, r5, #1
-	STRB r6, [r5]
-
-	MOV r6, #0x5000				; PORT F Base Address
-	MOVT r6, #0x4002
-	MOV r7, #0x002				; r7 holds RED LED mask
-
-	CMP r5, #11					; Checks if 5 seconds left (<=10 ticks)
-	ITTT LT
-	STRBLT r7, [r6, #GPIODATA]	; Set LED to RED
-
-
-NOTACTIVE:
 
 	POP {r4-r12, lr}
 	BX lr
@@ -324,7 +310,23 @@ GAIN_POWER: ; Indicate when power pellet is active
 
 	MOV pc, lr
 
+DECREMENT_COUNTER:
 
+	LDRB r5, ptr_to_pwr_tmr		; Decrement power timer
+	SUB r6, r5, #1
+	STRB r6, [r5]
+
+	CMP r5, #11					; Checks if 5 seconds left (<=10 ticks)
+	BGT DECREMENT_DONE
+
+	MOV r6, #0x5000				; PORT F Base Address
+	MOVT r6, #0x4002
+	MOV r7, #0x002				; r7 holds RED LED mask
+	STRBLT r7, [r6, #GPIODATA]	; Set LED to RED
+
+DECREMENT_DONE:
+
+	MOV pc, lr
 
 YOU_LOSE:
 	; lose
