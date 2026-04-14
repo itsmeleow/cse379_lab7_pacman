@@ -63,6 +63,8 @@ GPIOICR: 	.equ 0x41C		; GPIO Interrupt Clear Register
 	.global timer_init
 	.global timer_interrupt_init
 	.global timer_clear_interrupt
+	.global pause_timer
+	.global enable_timer
 	.global simple_read_character
 	.global output_character
 	.global read_string
@@ -505,4 +507,6 @@ output_string_done:
 
 
 	.end
+
+
 
