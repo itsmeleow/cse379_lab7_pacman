@@ -148,16 +148,17 @@ lab7:
 	BL output_board
 	; Set lives to 4, use Mask
 	MOV r4, #0x0F
-	LDR r0, ptr_to_lives
-	STRB r4, [r0]
+	LDR r5, ptr_to_lives
+	STRB r4, [r5]
 
 	; Set pellet timer to 0, reset power timer
 RESET_POWER_PELLET:
-	MOV r4, #0
-	LDR r0, ptr_to_pwr_tmr
-	STRB r4, [r0]
-	LDR r0, ptr_to_pwr_active
-	STRB r4, [r0]
+	MOV r4, #1
+	MOV r10, #0xFF
+	LDR r5, ptr_to_pwr_tmr
+	STRB r10, [r5]
+	LDR r5, ptr_to_pwr_active
+	STRB r4, [r5]
 
 
 	POP {r4-r12, lr}
@@ -271,6 +272,7 @@ Timer_Handler:
 	LDR r5, ptr_to_pwr_active	; Check if power is active
 	LDRB r6, [r5]
 	CMP r6, #1
+
 	BEQ DECREMENT_COUNTER		; Decrement counter if it is active
 
 
@@ -316,6 +318,7 @@ GAIN_POWER: ; Indicate when power pellet is active
 
 DECREMENT_COUNTER:
 
+	PUSH {r4-r12, lr}
 	MOV r8, #0x5000				; PORT F Base Address
 	MOVT r8, #0x4002
 	LDR r5, ptr_to_pwr_tmr
@@ -341,6 +344,7 @@ STILLACTIVE:					; Decrement power timer
 	STRB r7, [r8, #GPIODATA]	; Set LED to RED
 
 DECREMENT_DONE:
+	POP {r4-r12, lr}
 
 	MOV pc, lr
 
