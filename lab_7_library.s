@@ -131,7 +131,6 @@ uart_init:
 	ORR r5, r5, #0x11
 	STR r5, [r4] 	;configure pa0 and pa1
 
-	MOV r4,
 
 	POP {r4-r12,lr}  	; Restore registers from stack
 	MOV pc, lr
