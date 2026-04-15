@@ -69,7 +69,10 @@ GPIOICR: 	.equ 0x41C		; GPIO Interrupt Clear Register
 	.global output_character
 	.global read_string
 	.global output_string
-
+	.global turn_all_led_off
+	.global turn_red_led_on
+	.global turn_blue_led_on
+	.global turn_green_led_on
 
 uart_init:
 	PUSH {r4-r12,lr}	; Spill registers to stack
@@ -202,6 +205,7 @@ wait_enable_gpio:
 	LDR r5, [r4, #GPIODIR]
 	ORR r5, r5, #RED
 	ORR r5, r5, #GREEN
+	ORR r5, r5, #BLUE
 	BIC r5, r5, #SW1
 	STR r5, [r4, #GPIODIR]
 
@@ -215,16 +219,17 @@ wait_enable_gpio:
 	ORR r5, r5, #RED
 	ORR r5, r5, #GREEN
 	ORR r5, r5, #SW1
+	ORR r5, r5, #BLUE
 	STR r5, [r4, #GPIODEN]
 
 	; Port B Base Address
-	MOV r4, #0x4000
-	MOVT r4, #0x5000
+	;MOV r4, #0x4000
+	;MOVT r4, #0x5000
 
 	; Set RED for all LEDs
-	LDR r5, [r4, #GPIODATA]
-	ORR r5, #GPIO_ALICE
-	STR r5, [r4, #GPIODATA]
+	;LDR r5, [r4, #GPIODATA]
+	;ORR r5, r5, #GPIO_ALICE
+	;STR r5, [r4, #GPIODATA]
 
 
 	POP {r4-r12,lr}
@@ -334,8 +339,8 @@ Periodic_Mode:
 	STR r5, [r4, #GPTMTAMR]		; Writing 2 to TAMR
 
 Interval_Period:
-	MOV r5, #0x0900
-	MOVT r5, #0x003D			; 4 MHz in hex (4,000,000)
+	MOV r5, #0x2400
+	MOVT r5, #0x00F4			; 4 MHz in hex (4,000,000)
 	STR r5, [r4, #GPTMTAILR]	; Writing Interval, .25 seconds
 
 	POP {r4-r12, lr}
@@ -502,6 +507,74 @@ output_string_done:
 	POP {r4-r12,lr}  	; Restore registers from stack
 	MOV pc, lr
 
+turn_all_led_off:
+	PUSH {r4-r12, lr}
+
+	; GPIO PORT F Base Address
+	MOV r4, #0x5000
+	MOVT r4, #0x4002
+	LDR r5, [r4, #GPIODATA]
+	BIC r5, r5, #RED
+	BIC r5, r5, #BLUE
+	BIC r5, r5, #GREEN
+	STR r5, [r4, #GPIODATA]
+
+	POP {r4-r12,lr}
+	MOV pc, lr
+
+
+
+
+turn_red_led_on:
+	PUSH {r4-r12, lr}
+
+	; GPIO PORT F Base Address
+	MOV r4, #0x5000
+	MOVT r4, #0x4002
+	LDR r5, [r4, #GPIODATA]
+	ORR r5, r5, #RED
+	BIC r5, r5, #BLUE
+	BIC r5, r5, #GREEN
+	STR r5, [r4, #GPIODATA]
+
+	POP {r4-r12,lr}
+	MOV pc, lr
+
+
+
+
+turn_blue_led_on:
+	PUSH {r4-r12, lr}
+
+	; GPIO PORT F Base Address
+	MOV r4, #0x5000
+	MOVT r4, #0x4002
+	LDR r5, [r4, #GPIODATA]
+	BIC r5, r5, #RED
+	ORR r5, r5, #BLUE
+	BIC r5, r5, #GREEN
+	STR r5, [r4, #GPIODATA]
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+
+turn_green_led_on:
+	PUSH {r4-r12, lr}
+
+	; GPIO PORT F Base Address
+	MOV r4, #0x5000
+	MOVT r4, #0x4002
+	LDR r5, [r4, #GPIODATA]
+	BIC r5, r5, #RED
+	BIC r5, r5, #BLUE
+	ORR r5, r5, #GREEN
+	STR r5, [r4, #GPIODATA]
+
+	POP {r4-r12,lr}
+	MOV pc, lr
 
 
 

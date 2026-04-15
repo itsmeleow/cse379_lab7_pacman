@@ -108,6 +108,10 @@ pwr_active:			.byte 0 ; 0 = no power, 1 = power pellet eaten
 	.global output_character
 	.global read_string
 	.global output_string
+	.global turn_all_led_off
+	.global turn_red_led_on
+	.global turn_blue_led_on
+	.global turn_green_led_on
 
 	; subroutines in current file
 	.global lab7
@@ -154,7 +158,7 @@ lab7:
 	; Set pellet timer to 0, reset power timer
 RESET_POWER_PELLET:
 	MOV r4, #1
-	MOV r10, #0xFF
+	MOV r10, #11
 	LDR r5, ptr_to_pwr_tmr
 	STRB r10, [r5]
 	LDR r5, ptr_to_pwr_active
@@ -297,6 +301,7 @@ LOSE_LIFE: ; Checks how many lives, then removes a life
 POINTS: ; Point counter
 
 GAIN_POWER: ; Indicate when power pellet is active
+	PUSH {r4-r12, lr}
 
 	MOV r4, #0x5000 		; Base address of PORT F
 	MOVT r4, #0x4002
@@ -308,19 +313,16 @@ GAIN_POWER: ; Indicate when power pellet is active
 	MOV r6, #20
 	STRB r6, [r5]			; Set timer to 20 ticks (5 seconds), resets everytime power eaten
 
-	LDRB r5, [r4, #GPIODATA]; Data Register
-	ORR r5, r5, #0x004		; Set blue
-	STRB r5, [r4, #GPIODATA]
+	BL turn_blue_led_on
 
 	; After 5 seconds it is red.
 
+	POP {r4-r12, lr}
 	MOV pc, lr
 
 DECREMENT_COUNTER:
-
 	PUSH {r4-r12, lr}
-	MOV r8, #0x5000				; PORT F Base Address
-	MOVT r8, #0x4002
+
 	LDR r5, ptr_to_pwr_tmr
 	LDRB r10, [r5]				; r10 holds tick count
 	MOV r9, #0					; r9 used for LED register mask and cmp tick = 0
@@ -328,9 +330,9 @@ DECREMENT_COUNTER:
 POWEROUT:						; If power ran out
 	CMP r10, r9
 	BNE STILLACTIVE
-	STRB r9, [r8, #GPIODATA]	; Power ran out, set LED to OFF
-	LDR r5, ptr_to_pwr_active
-	STRB r9, [r5]				; Set power = 0, NO POWER
+	BL turn_all_led_off
+	LDR r11, ptr_to_pwr_active
+	STRB r9, [r11]				; Set power = 0, NO POWER
 	B DECREMENT_DONE
 
 STILLACTIVE:					; Decrement power timer
@@ -340,12 +342,11 @@ STILLACTIVE:					; Decrement power timer
 	CMP r10, #10				; Checks if 5 seconds left (>10 ticks)
 	BGT DECREMENT_DONE
 
-	MOV r7, #0x002				; r7 holds RED LED mask
-	STRB r7, [r8, #GPIODATA]	; Set LED to RED
+
+	BL turn_red_led_on
 
 DECREMENT_DONE:
 	POP {r4-r12, lr}
-
 	MOV pc, lr
 
 YOU_LOSE:
