@@ -15,7 +15,25 @@ white:		.string 27, "[38;5;252m", 0
 black_bg:	.string 27, "[48;5;0m", 0
 blue_bg:	.string 27, "[48;5;12m", 0
 cyan_bg:	.string 27, "[48;5;50m", 0
-GPIODATA: .equ 0x3FC 	; Read/Write pins
+
+; define ANSI Cursor positioning
+; cursor position format - ESC[LINE;COLUMN H
+; LINE = horizontal row
+; COLUMN = verital column
+cursor_pos:		.string 27, "[14;23H", 0
+cursor_up:		.string 27, "[1A", 0
+cursor_down: 	.string 27, "[1B", 0
+cursor_right: 	.string 27, "[1C", 0
+cursor_left:	.string 27, "[1D", 0
+cursor_save:	.string 27, "[s", 0
+cursor_restore: .string 27, "[u", 0
+display_erase:	.string 27, "[2J", 0
+
+; pacman ghost gang ANSI cursor position
+blinky_pos:		.string 27, "[10;4H", 0
+pinky_pos:		.string 27, "[2;14H", 0
+inky_pos:		.string 27, "[7,20H", 0
+clyde_pos:		.string 27, "[30,17H", 0
 
 
 ; LOOKUP TABLES [LUT]
@@ -37,6 +55,15 @@ lookup_chars:
 	.byte 	"o"				; 		[3] - white character for power pellet
 	.byte 	"<"				; 		[4] - pacman character
 	.byte 	" "				; 		[5] - ghost gate at their spawn
+
+; here we use a LUT to update pacman's new direction based on pacman_dir
+lookup_cursor:
+	.word cursor_pos		; index [0] - sets cursor position
+	.word cursor_up			;  		[1] - move cursor (up 1) space
+	.word cursor_down		;  		[2] - move cursor (down 1) space
+	.word cursor_right		;  		[3] - move cursor (right 1) space
+	.word cursor_left		;  		[4]	- move cursor (left 1) space
+
 
 ; the game board is a 28 x 31 characters
 board:
@@ -80,14 +107,21 @@ board:
 
 ; GAME LOGIC DATA VALUES
 ; pacman direction, lives, scores, game state, etc.
-paused:		.byte 0			; stores game pause state
-									; 0 - not paused
-									; 1 - paused
+paused:				.byte 0	; stores game pause state
+								; 0 - not paused
+								; 1 - paused
 score:				.byte 0 ; user score
 lives:				.byte 0 ; user lives
 pwr_tmr:		    .byte 0 ; timer for power pellet
-pwr_active:			.byte 0 ; 0 = no power, 1 = power pellet eaten
-
+pwr_active:			.byte 0 ; stores if pacman ate power pellet
+								; 0 = no power pellet
+								; 1 = power pellet eaten
+pacman_dir:			.byte 0 ; stores pacmans current direction
+								; 0 - stationary
+								; 1 - up
+								; 2 - down
+								; 3 - right
+								; 4 - left
 
 
 
@@ -116,9 +150,18 @@ pwr_active:			.byte 0 ; 0 = no power, 1 = power pellet eaten
 	.global Timer_Handler
 
 
+GPIODATA: 				.equ 0x3FC 	; Read/Write pins
 ; constants for our game board
 board_x_val:			.equ 28		; highest x-coord for our game board
 board_y_val:			.equ 31		; highest y-coord for our game board
+pacman_x_start:			.equ 14		; pacman starting x location
+pacman_y_start:			.equ 23		; pacman starting y location
+pacman_x:				.equ 14		; pacman current x location
+pacman_y:				.equ 23		; pacman current y location
+blinky_x_start:			.equ 14		; pacman starting x location
+blinky_y_start:			.equ 23		; pacman starting y location
+blinky_x:				.equ 14		; pacman current x location
+blinky_y:				.equ 23		; pacman current y location
 
 
 ; ptr to our ANSI LUT
@@ -126,16 +169,18 @@ ptr_to_newline:			.word newline
 ptr_to_reset: 			.word reset
 ptr_to_lookup_colors: 	.word lookup_colors
 ptr_to_lookup_chars:	.word lookup_chars
+ptr_to_lookup_cursor:	.word lookup_cursor
 ptr_to_board:			.word board
 
 
 ; ptr to our game logic
 ptr_to_paused:			.word paused
+ptr_to_score:			.word score
+ptr_to_lives:			.word lives
+ptr_to_pwr_tmr:  		.word pwr_tmr
+ptr_to_pwr_active:		.word pwr_active
+ptr_to_pacman_dir: 		.word pacman_dir
 
-ptr_to_lives:		.word lives
-ptr_to_score:		.word score
-ptr_to_pwr_tmr:  	.word pwr_tmr
-ptr_to_pwr_active:	.word pwr_active
 
 lab7:
 	PUSH {r4-r12, lr}
@@ -160,9 +205,35 @@ RESET_POWER_PELLET:
 	LDR r5, ptr_to_pwr_active
 	STRB r4, [r5]
 
+	; we initialize pacman to starting x and y location
+	BL reset_pacman_and_ghosts
+
 
 	POP {r4-r12, lr}
 	MOV pc, lr
+
+
+
+
+; reset pacman and ghost locations
+; - used for starting new game/level and when pacman dies
+reset_pacman_and_ghosts:
+	PUSH {r4-r12, lr}
+
+	; initialize pacman starting x and y location with cursor positioning
+
+
+
+	; set yellow color and < char for pacman
+	LDR r8, ptr_to_lookup_colors
+	LDRB r0, [r8, #16]					; index 4 in our lookup_colors table
+	BL output_string
+	LDR r8, ptr_to_lookup_chars
+	LDRB r0, [r8, #4]					; index 4 in our lookup_chars table
+
+	POP {r4-r12}
+	MOV pc, lr
+
 
 ; output the game board to the screen
 ; we will go through the map array we defined
@@ -196,7 +267,8 @@ output_check_x:
 	; same thing but with character, we stored as bytes so no need to modify our character byte val
 	LDR r8, ptr_to_lookup_chars
 	LDRB r0, [r8, r7]
-	BL output_character					; we now have the correct char to set in r0 so we can output it to display both the color and char
+	BL output_character					; we now have the correct char to set in r0 so we can output it
+										; to display both the color and char
 
 	ADD r4, r4, #1						; increment our position in array
 	ADD r6, r6, #1						; increment our x coord
@@ -206,7 +278,7 @@ output_check_x:
 	B output_check_x
 
 output_check_x_done:
-	; after we finish checking a row, we want to skip to a new line to keep outputing
+	; after we finish checking a row, we want to print a newline for the next row
 
 	LDR r0, ptr_to_newline
 	BL output_string
@@ -221,11 +293,47 @@ output_done:
 
 
 
+; try to implement moving pacman here using ANSI cursor controls
+; the Timer_handler will call this to ensure that pacman moves max once per clock period
+move_pacman:
+	PUSH {r4-r12, lr}
+
+
+
+
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+
+; set pacmans next direction here
+; -> however, we need to check if the new position is valid
+; invalid if not valid ascii for [w,a,s,d] or if next block
+; is out of the moveable area
+set_pacman_dir:
+	PUSH {r4-r12, lr}
+
+	; we first check if pacmans next position would be valid
+	; if not, we can just keep the same position and return
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+; we only need the UART0 handler to handle setting the direction pacman will go next
 UART0_Handler:
 	PUSH {r4-r12, lr}
 	; clear uart0 interrupt
 	BL uart_clear_interrupt
 
+	; read the character passed to our UART0 Data Register
+	BL simple_read_character
+
+	; set pacman direction
+	BL set_pacman_dir
 
 
 	POP {r4-r12, lr}
@@ -263,7 +371,7 @@ switch_done:
 
 
 
-
+; we only refresh pacman and the ghosts here and use this to implement power pellet time
 Timer_Handler:
 	PUSH {r4-r12, lr}
 	; clear timer interrupt
@@ -275,6 +383,7 @@ Timer_Handler:
 
 	BEQ DECREMENT_COUNTER		; Decrement counter if it is active
 
+	BL move_pacman				; every refresh, pacman moves based on pacman_dir
 
 	POP {r4-r12, lr}
 	BX lr
