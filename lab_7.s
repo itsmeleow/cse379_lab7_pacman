@@ -15,6 +15,7 @@ white:		.string 27, "[38;5;252m", 0
 black_bg:	.string 27, "[48;5;0m", 0
 blue_bg:	.string 27, "[48;5;12m", 0
 cyan_bg:	.string 27, "[48;5;50m", 0
+
 GPIODATA: .equ 0x3FC 	; Read/Write pins
 
 
@@ -87,7 +88,7 @@ score:				.byte 0 ; user score
 lives:				.byte 0 ; user lives
 pwr_tmr:		    .byte 0 ; timer for power pellet
 pwr_active:			.byte 0 ; 0 = no power, 1 = power pellet eaten
-
+game_active:		.byte 0	; 0 = game is off, 1 = game is active
 
 
 
@@ -140,6 +141,8 @@ ptr_to_lives:		.word lives
 ptr_to_score:		.word score
 ptr_to_pwr_tmr:  	.word pwr_tmr
 ptr_to_pwr_active:	.word pwr_active
+ptr_to_gme_active:	.word game_active
+
 
 lab7:
 	PUSH {r4-r12, lr}
@@ -155,6 +158,12 @@ lab7:
 	LDR r5, ptr_to_lives
 	STRB r4, [r5]
 
+	; Set game to ON, for game loop
+TURN_GAME_ON:
+	MOV r4, #0
+	LDR r5, ptr_to_gme_active
+	STRB r4, [r5]
+
 	; Set pellet timer to 0, reset power timer
 RESET_POWER_PELLET:
 	MOV r4, #1
@@ -164,6 +173,21 @@ RESET_POWER_PELLET:
 	LDR r5, ptr_to_pwr_active
 	STRB r4, [r5]
 
+game_loop:
+
+
+	BL CHECK_GHOST				; Checks if player position == ghost position
+
+	LDR r5, ptr_to_pwr_active	; Check if power is active
+	LDRB r6, [r5]
+	CMP r6, #1
+	BEQ DECREMENT_COUNTER		; Decrement counter if it is active
+
+
+	;LDR r11, ptr_to_gme_active		; Check if the game should continue looping
+	;LDRB r12, [r11]
+	;CMP r12, #1
+	BEQ game_loop
 
 	POP {r4-r12, lr}
 	MOV pc, lr
@@ -273,13 +297,6 @@ Timer_Handler:
 	; clear timer interrupt
 	BL timer_clear_interrupt
 
-	LDR r5, ptr_to_pwr_active	; Check if power is active
-	LDRB r6, [r5]
-	CMP r6, #1
-
-	BEQ DECREMENT_COUNTER		; Decrement counter if it is active
-
-
 	POP {r4-r12, lr}
 	BX lr
 
@@ -348,6 +365,16 @@ STILLACTIVE:					; Decrement power timer
 DECREMENT_DONE:
 	POP {r4-r12, lr}
 	MOV pc, lr
+
+CHECK_GHOST:					; Checks if the (x,y) position is the same as player
+	PUSH {r4-r12, lr}			; Determines what to do next depending on the result
+								; If power pellet
+
+
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
 
 YOU_LOSE:
 	; lose
