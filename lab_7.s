@@ -1,6 +1,7 @@
 
 	.data
 
+	.global current_stage
 
 ; GAME BOARD DATA VALUES
 ; define ANSI Escape Codes
@@ -16,9 +17,7 @@ black_bg:	.string 27, "[48;5;0m", 0
 blue_bg:	.string 27, "[48;5;12m", 0
 cyan_bg:	.string 27, "[48;5;50m", 0
 
-<<<<<<< HEAD
 GPIODATA: .equ 0x3FC 	; Read/Write pins
-=======
 ; define ANSI Cursor positioning
 ; cursor position format - ESC[LINE;COLUMN H
 ; LINE = horizontal row
@@ -37,7 +36,6 @@ blinky_pos:		.string 27, "[10;4H", 0
 pinky_pos:		.string 27, "[2;14H", 0
 inky_pos:		.string 27, "[7,20H", 0
 clyde_pos:		.string 27, "[30,17H", 0
->>>>>>> 87deba853cfff88d50a713cffae796806d60f82a
 
 
 ; LOOKUP TABLES [LUT]
@@ -59,6 +57,10 @@ lookup_chars:
 	.byte 	"o"				; 		[3] - white character for power pellet
 	.byte 	"<"				; 		[4] - pacman character
 	.byte 	" "				; 		[5] - ghost gate at their spawn
+	.byte	" "				;		[6] - pellet eaten, moveable space
+	.byte	" "				;		[7] - power pellet eaten, moveable space
+							; when any pellet is eaten, index + 4,
+							; use this value when reinitalizing the board for printing
 
 ; here we use a LUT to update pacman's new direction based on pacman_dir
 lookup_cursor:
@@ -114,24 +116,26 @@ board:
 paused:				.byte 0	; stores game pause state
 								; 0 - not paused
 								; 1 - paused
+current_stage:		.byte 0 ; current stage, for timer purposes
 score:				.byte 0 ; user score
 lives:				.byte 0 ; user lives
 pwr_tmr:		    .byte 0 ; timer for power pellet
-<<<<<<< HEAD
 pwr_active:			.byte 0 ; 0 = no power, 1 = power pellet eaten
 game_active:		.byte 0	; 0 = game is off, 1 = game is active
-=======
-pwr_active:			.byte 0 ; stores if pacman ate power pellet
 								; 0 = no power pellet
 								; 1 = power pellet eaten
+ghosts_eaten:		.byte 128	; how many ghosts eaten during power duration
+								; rotate right 7 * 100 for each ghost
+								; 1 = 100 pts
+								; 2 = 200 pts
+								; 4 = 400 pts
+								; 8 = 800 pts, 10000000 --> 00000001 --> 00000010
 pacman_dir:			.byte 0 ; stores pacmans current direction
 								; 0 - stationary
 								; 1 - up
 								; 2 - down
 								; 3 - right
 								; 4 - left
->>>>>>> 87deba853cfff88d50a713cffae796806d60f82a
-
 
 
 	.text
@@ -161,6 +165,7 @@ pacman_dir:			.byte 0 ; stores pacmans current direction
 	.global UART0_Handler
 	.global Switch_Handler
 	.global Timer_Handler
+	.global ptr_to_current_stage
 
 
 GPIODATA: 				.equ 0x3FC 	; Read/Write pins
@@ -193,16 +198,9 @@ ptr_to_lives:			.word lives
 ptr_to_pwr_tmr:  		.word pwr_tmr
 ptr_to_pwr_active:		.word pwr_active
 ptr_to_pacman_dir: 		.word pacman_dir
-
-<<<<<<< HEAD
-ptr_to_lives:		.word lives
-ptr_to_score:		.word score
-ptr_to_pwr_tmr:  	.word pwr_tmr
-ptr_to_pwr_active:	.word pwr_active
-ptr_to_gme_active:	.word game_active
-
-=======
->>>>>>> 87deba853cfff88d50a713cffae796806d60f82a
+ptr_to_gme_active:		.word game_active
+ptr_to_ghosts_eaten:	.word ghosts_eaten
+ptr_to_current_stage:	.word current_stage
 
 lab7:
 	PUSH {r4-r12, lr}
@@ -213,6 +211,8 @@ lab7:
 	BL timer_interrupt_init
 
 	BL output_board
+	BL reset_pacman_and_ghosts
+
 	; Set lives to 4, use Mask
 	MOV r4, #0x0F
 	LDR r5, ptr_to_lives
@@ -233,27 +233,30 @@ RESET_POWER_PELLET:
 	LDR r5, ptr_to_pwr_active
 	STRB r4, [r5]
 
-<<<<<<< HEAD
 game_loop:
 
+	LDR r4, ptr_to_pacman_dir	; Check if pacman is moving
+	LDRB r5, [r4]				; 0 = pacman isnt moving, branch back to the loop
+	CMP r5, #0
+	BEQ game_loop
 
-	BL CHECK_GHOST				; Checks if player position == ghost position
+	MOV r5, #0
+	STRB r5, [r4]				; Reset movement to 0 until next .25 second cycle
 
 	LDR r5, ptr_to_pwr_active	; Check if power is active
+	BL CHECK_POSITION				; Checks if player position == ghost position
+
 	LDRB r6, [r5]
 	CMP r6, #1
 	BEQ DECREMENT_COUNTER		; Decrement counter if it is active
 
 
-	;LDR r11, ptr_to_gme_active		; Check if the game should continue looping
-	;LDRB r12, [r11]
-	;CMP r12, #1
+	LDR r11, ptr_to_gme_active		; Check if the game should continue looping
+	LDRB r12, [r11]
+	CMP r12, #1
 	BEQ game_loop
-=======
 	; we initialize pacman to starting x and y location
-	BL reset_pacman_and_ghosts
 
->>>>>>> 87deba853cfff88d50a713cffae796806d60f82a
 
 	POP {r4-r12, lr}
 	MOV pc, lr
@@ -423,20 +426,12 @@ Timer_Handler:
 	; clear timer interrupt
 	BL timer_clear_interrupt
 
-<<<<<<< HEAD
-=======
-	LDR r5, ptr_to_pwr_active	; Check if power is active
-	LDRB r6, [r5]
-	CMP r6, #1
+	MOV r5, #1				; Allow movement
+	LDR r4, ptr_to_pacman_dir
+	STRB r5, [r4]
 
-	BEQ DECREMENT_COUNTER		; Decrement counter if it is active
-
-	BL move_pacman				; every refresh, pacman moves based on pacman_dir
-
->>>>>>> 87deba853cfff88d50a713cffae796806d60f82a
 	POP {r4-r12, lr}
 	BX lr
-
 
 
 LOSE_LIFE: ; Checks how many lives, then removes a life
@@ -444,15 +439,13 @@ LOSE_LIFE: ; Checks how many lives, then removes a life
 
 	LDR r4, ptr_to_lives
 	LDRB r5, [r4]
-	CMP r5, #2				; Check if lives are <= 1
-	BLT YOU_LOSE			; If less than 1, lose the game
+	CMP r5, #0				; Check if lives are == 0
+	BEQ YOU_LOSE			; If less than 1, lose the game
 
 	LSR r5, r5, #1			; Shift right 1 byte, changes mask for LEDs
 	STRB r5, [r4]			; Store the new lives count
 
 	MOV pc, lr
-
-POINTS: ; Point counter
 
 GAIN_POWER: ; Indicate when power pellet is active
 	PUSH {r4-r12, lr}
@@ -503,14 +496,45 @@ DECREMENT_DONE:
 	POP {r4-r12, lr}
 	MOV pc, lr
 
-CHECK_GHOST:					; Checks if the (x,y) position is the same as player
+CHECK_POSITION:					; Checks what the (x,y) position has on the board
 	PUSH {r4-r12, lr}			; Determines what to do next depending on the result
-								; If power pellet
+								; If power pellet then gain power, pellet gain points, if ghost etc
 
+	LDR r4, ptr_to_ghosts_eaten
+	LDR r5, ptr_to_score
 
+	LDRB r6, [r4]				; R6 holds how many ghosts eaten
+	LDRB r7, [r5]				; R7 holds points value
+	; Check x y position
+	; If position is pellet
+	; BL POINTS
+	MOV r8, #10
+	ADD r7, r7, r8
+	STRB r7, [r5]				; Add 10 to existing points
+	B CHECK_DONE
+
+	; If same position as ghost AND powerpellet is active
+	; BL POINTS vvvvvvvv
+
+GHOST_EATEN:
+	ROR r6, r6, #7
+	MOV r8, #100
+	MUL r6, r6, r8				; Points for each ghost
+	ADD r7, r7, r6				; Add to preexisting points
+	STRB r7, [r5]				; Store points
+
+	B CHECK_DONE
+
+	; If same position as ghost NAND powerpellet is active
+	; BL LOSE_LIFE
+	; If power pellet
+	; BL gain power
+
+CHECK_DONE:
 
 	POP {r4-r12, lr}
 	MOV pc, lr
+
 
 
 YOU_LOSE:

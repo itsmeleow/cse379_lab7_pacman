@@ -73,6 +73,10 @@ GPIOICR: 	.equ 0x41C		; GPIO Interrupt Clear Register
 	.global turn_red_led_on
 	.global turn_blue_led_on
 	.global turn_green_led_on
+	.global ptr_to_current_stage
+
+	.data
+	.global current_stage
 
 uart_init:
 	PUSH {r4-r12,lr}	; Spill registers to stack
@@ -339,9 +343,19 @@ Periodic_Mode:
 	STR r5, [r4, #GPTMTAMR]		; Writing 2 to TAMR
 
 Interval_Period:
-	MOV r5, #0x2400
-	MOVT r5, #0x00F4			; 4 MHz in hex (4,000,000)
-	STR r5, [r4, #GPTMTAILR]	; Writing Interval, .25 seconds
+	MOV r5, #0x2400				; 4 MHz in hex (4,000,000)
+	MOVT r5, #0x00F4			; .25 seconds
+
+	MOV r6, #0x7100				; 160,000 Hz in hex (160,000)
+	MOVT r6, #0x0002			; .01 seconds
+
+	LDR r7, ptr_to_current_stage
+	LDRB r7, [r7]				; What stage player is currently on
+
+	MUL r6, r6, r7				; Multiply .01 by how many stages progressed
+
+	SUB r5, r5, r6				; .25 seconds - .01 * stages progressed
+	STR r5, [r4, #GPTMTAILR]	; Writing Interval
 
 	POP {r4-r12, lr}
 	MOV pc, lr
