@@ -16,11 +16,14 @@ black_bg:	.string 27, "[48;5;0m", 0
 blue_bg:	.string 27, "[48;5;12m", 0
 cyan_bg:	.string 27, "[48;5;50m", 0
 
+
 ; define ANSI Cursor positioning
 ; cursor position format - ESC[LINE;COLUMN H
 ; LINE = horizontal row
 ; COLUMN = verital column
-cursor_pos:		.string 27, "[14;23H", 0
+cursor_template:
+    .byte 0x1B, "[00;00H", 0
+cursor_nomove:	.string 27, "[0A", 0
 cursor_up:		.string 27, "[1A", 0
 cursor_down: 	.string 27, "[1B", 0
 cursor_right: 	.string 27, "[1C", 0
@@ -29,11 +32,17 @@ cursor_save:	.string 27, "[s", 0
 cursor_restore: .string 27, "[u", 0
 display_erase:	.string 27, "[2J", 0
 
-; pacman ghost gang ANSI cursor position
-blinky_pos:		.string 27, "[10;4H", 0
-pinky_pos:		.string 27, "[2;14H", 0
-inky_pos:		.string 27, "[7,20H", 0
-clyde_pos:		.string 27, "[30,17H", 0
+pacman_cursor:	.string 27, "[14;23H", 0
+blinky_cursor:	.string 27, "[4;3H", 0
+pinky_cursor:	.string 27, "[20;29H", 0
+inky_cursor:	.string 27, "[11;5H", 0
+clyde_cursor:	.string 27, "[3;15H", 0
+
+pacman_loc:				.word 631	; pacman current location on board
+blinky_loc:				.word 201	; blinky current location on board
+pinky_loc:				.word 132	; pinky current location on board
+inky_loc:				.word 50	; inky current location on board
+clyde_loc:				.word 808	; clyde current location on board
 
 
 ; LOOKUP TABLES [LUT]
@@ -58,11 +67,43 @@ lookup_chars:
 
 ; here we use a LUT to update pacman's new direction based on pacman_dir
 lookup_cursor:
-	.word cursor_pos		; index [0] - sets cursor position
+	.word cursor_nomove		; index [0] - don't move cursor (0) space
 	.word cursor_up			;  		[1] - move cursor (up 1) space
 	.word cursor_down		;  		[2] - move cursor (down 1) space
 	.word cursor_right		;  		[3] - move cursor (right 1) space
 	.word cursor_left		;  		[4]	- move cursor (left 1) space
+
+; we use a LUT to loop through all the characters on the board
+lookup_game_char_loc:
+	.word pacman_loc		; index [0] - pacman current location on board
+	.word blinky_loc		; 		[1] - blinky current location on board
+	.word pinky_loc			; 		[2] - pinky current location on board
+	.word inky_loc			; 		[3] - inky current location on board
+	.word clyde_loc			; 		[4] - clyde current location on board
+
+; we use a LUT to loop through all the characters cursors
+lookup_char_cursors:
+	.word pacman_cursor		; index [0] - pacman cursor
+	.word blinky_cursor		; 		[1] - blinky cursor
+	.word pinky_cursor		; 		[2] - pinky cursor
+	.word inky_cursor		; 		[3] - inky cursor
+	.word clyde_cursor		; 		[4] - clyde cursor
+
+; we use a LUT to loop through all the characters colors
+lookup_game_char_colors:
+	.word yellow			; index [0] - pacman color
+	.word red				; 		[1] - blinky color
+	.word pink				; 		[2] - pinky color
+	.word blue				; 		[3] - inky color
+	.word orange			; 		[4] - clyde color
+
+; LUT to loop through all character directions
+lookup_char_dir:
+	.word pacman_dir		; index [0] - pacman dir
+	.word blinky_dir		; 		[1] - blinky dir
+	.word pinky_dir			; 		[2] - pinky dir
+	.word inky_dir			; 		[3] - inky dir
+	.word clyde_dir			; 		[4] - clyde dir
 
 
 ; the game board is a 28 x 31 characters
@@ -122,6 +163,30 @@ pacman_dir:			.byte 0 ; stores pacmans current direction
 								; 2 - down
 								; 3 - right
 								; 4 - left
+blinky_dir:			.byte 0 ; stores blinky current direction
+								; 0 - stationary
+								; 1 - up
+								; 2 - down
+								; 3 - right
+								; 4 - left
+pinky_dir:			.byte 0 ; stores pinky current direction
+								; 0 - stationary
+								; 1 - up
+								; 2 - down
+								; 3 - right
+								; 4 - left
+inky_dir:			.byte 0 ; stores inky current direction
+								; 0 - stationary
+								; 1 - up
+								; 2 - down
+								; 3 - right
+								; 4 - left
+clyde_dir:			.byte 0 ; stores clyde current direction
+								; 0 - stationary
+								; 1 - up
+								; 2 - down
+								; 3 - right
+								; 4 - left
 
 
 
@@ -158,23 +223,35 @@ GPIODATA: 				.equ 0x3FC 	; Read/Write pins
 ; constants for our game board
 board_x_val:			.equ 28		; highest x-coord for our game board
 board_y_val:			.equ 31		; highest y-coord for our game board
-pacman_x_start:			.equ 14		; pacman starting x location
-pacman_y_start:			.equ 23		; pacman starting y location
-pacman_x:				.equ 14		; pacman current x location
-pacman_y:				.equ 23		; pacman current y location
-blinky_x_start:			.equ 14		; pacman starting x location
-blinky_y_start:			.equ 23		; pacman starting y location
-blinky_x:				.equ 14		; pacman current x location
-blinky_y:				.equ 23		; pacman current y location
 
 
-; ptr to our ANSI LUT
-ptr_to_newline:			.word newline
-ptr_to_reset: 			.word reset
-ptr_to_lookup_colors: 	.word lookup_colors
-ptr_to_lookup_chars:	.word lookup_chars
-ptr_to_lookup_cursor:	.word lookup_cursor
-ptr_to_board:			.word board
+pacman_start_loc:		.equ 631	; pacman current location on board
+blinky_start_loc:		.equ 200	; blinky current location on board
+pinky_start_loc:		.equ 132	; pinky current location on board
+inky_start_loc:			.equ 50		; inky current location on board
+clyde_start_loc:		.equ 808	; clyde current location on board
+
+
+; ptr to our ANSI LUT's
+ptr_to_newline:					.word newline
+ptr_to_reset: 					.word reset
+ptr_to_display_erase:			.word display_erase
+ptr_to_cursor_template:			.word cursor_template
+ptr_to_lookup_colors: 			.word lookup_colors
+ptr_to_lookup_chars:			.word lookup_chars
+ptr_to_lookup_cursor:			.word lookup_cursor
+ptr_to_lookup_game_char_loc: 	.word lookup_game_char_loc
+ptr_to_lookup_char_cursors:		.word lookup_char_cursors
+ptr_to_lookup_game_char_colors:	.word lookup_game_char_colors
+ptr_to_board:					.word board
+
+
+; ptr to pacman and all ghost locations
+ptr_to_pacman_loc:		.word pacman_loc
+ptr_to_blinky_loc:		.word blinky_loc
+ptr_to_pinky_loc:		.word pinky_loc
+ptr_to_inky_loc:		.word inky_loc
+ptr_to_clyde_loc:		.word clyde_loc
 
 
 ; ptr to our game logic
@@ -184,6 +261,12 @@ ptr_to_lives:			.word lives
 ptr_to_pwr_tmr:  		.word pwr_tmr
 ptr_to_pwr_active:		.word pwr_active
 ptr_to_pacman_dir: 		.word pacman_dir
+ptr_to_blinky_dir:		.word blinky_dir
+ptr_to_pinky_dir:		.word pinky_dir
+ptr_to_inky_dir:		.word inky_dir
+ptr_to_clyde_dir:		.word clyde_dir
+
+
 
 
 lab7:
@@ -217,26 +300,124 @@ RESET_POWER_PELLET:
 	MOV pc, lr
 
 
-
-
 ; reset pacman and ghost locations
-; - used for starting new game/level and when pacman dies
+; - set pacman and ghost locations to their respective starting locations
 reset_pacman_and_ghosts:
 	PUSH {r4-r12, lr}
 
-	; initialize pacman starting x and y location with cursor positioning
+	LDR r4, ptr_to_pacman_loc
+	MOV r5, #pacman_start_loc
+	STRB r5, [r4]
 
+	LDR r4, ptr_to_blinky_loc
+	MOV r5, #blinky_start_loc
+	STRB r5, [r4]
 
+	LDR r4, ptr_to_pinky_loc
+	MOV r5, #pinky_start_loc
+	STRB r5, [r4]
 
-	; set yellow color and < char for pacman
-	LDR r8, ptr_to_lookup_colors
-	LDRB r0, [r8, #16]					; index 4 in our lookup_colors table
-	BL output_string
-	LDR r8, ptr_to_lookup_chars
-	LDRB r0, [r8, #4]					; index 4 in our lookup_chars table
+	LDR r4, ptr_to_inky_loc
+	MOV r5, #inky_start_loc
+	STRB r5, [r4]
+
+	LDR r4, ptr_to_clyde_loc
+	MOV r5, #clyde_start_loc
+	STRB r5, [r4]
+
+	BL move_pacman_and_ghosts
 
 	POP {r4-r12}
 	MOV pc, lr
+
+
+
+
+; reset ANSI styling (background and foreground coloring)
+reset_ansi:
+	PUSH {r4-r12, lr}
+
+	LDR r0, ptr_to_reset
+	BL output_string
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+
+; output pacman and ghost on board
+; we build the ANSI cursor positioning string for pacman and each ghost here
+move_pacman_and_ghosts:
+	PUSH {r4-r12, lr}
+
+	; we retrieve the location of our cursor_pos ANSI string here
+	LDR r4, ptr_to_lookup_char_cursors
+	LDR r5, ptr_to_lookup_game_char_loc
+
+	MOV r6, #0
+move_pacman_ghost_loop:
+
+	; r7 would hold the location we want to calculate
+	LSL r7, r6, #2
+	LDRB r7, [r5, r7]			; holds the location of our game character
+
+	MOV r10, #board_x_val     ; r10 = 28 (Divisor)
+	UDIV r8, r7, r10          ; r8 = location / 28 (Row / Y-value)
+	MUL r9, r8, r10           ; r9 = Row * 28
+	SUB r9, r7, r9 			  ; gives us location r7 mod 28 = column we are on (r9 - x-value)
+
+	ADD r8, r8, #1            ; Make y start from index 1 for ANSI
+	ADD r9, r9, #1            ; Make x start from index 1 for ANSI
+
+	; calculate the ascii value of the x and y positions
+	; for y-value
+	MOV r10, #10
+	UDIV r11, r8, r10			; y / 10 = (r11) tens place
+	MUL r10, r11, r10			; multiply the quotient back
+	SUB r10, r8, r10			; y - (r11 * 10) = (r10) ones place
+	ADD r10, r10, #0x30			; r10 holds the ascii ones value of y-value
+	ADD r8, r11, #0x30			; r8 holds the ascii tens value of y-value
+
+	; for x-value
+	MOV r11, #10
+	UDIV r7, r9, r11			; x / 10 = (r7) tens place
+	MUL r11, r7, r11			; multiply the quotient back
+	SUB r9, r9, r11				; x - (r7 * 10) = (r9) ones place
+	ADD r9, r9, #0x30			; r10 holds the ascii ones value of x-value
+	ADD r7, r7, #0x30			; r7 holds the ascii tens value of x-value
+
+	LDR r12, ptr_to_cursor_template
+	; ESC[y;xH
+	STRB r8, [r12, #2]
+	STRB r10, [r12, #3]
+	STRB r7, [r12, #5]
+	STRB r9, [r12, #6]
+	; here we store to the cursor template with ESC[y;xH
+
+	MOV r0, r12 		; first, set the cursor to that position
+	BL output_string
+
+	; output color (yellow, pink, red, blue, orange)
+	LDR r8, ptr_to_lookup_game_char_colors
+	LDRB r0, [r8, #16]					; index 4 in our lookup_colors table
+	BL output_string
+	; output character (<) or (A)
+	CMP r6, #0
+	ITE EQ
+	MOVEQ r0, #0x3C						; pacman game character (<) if our index is 0
+	MOVNE r0, #0x41						; else, just (A) for ghosts
+	BL output_character
+
+	ADD r6, r6, #1
+	CMP r6, #5
+	BNE move_pacman_ghost_loop
+
+move_pacman_ghost_loop_done:
+	POP {r4-r12}
+	MOV pc, lr
+
+
 
 
 ; output the game board to the screen
@@ -245,6 +426,10 @@ reset_pacman_and_ghosts:
 ; based on their index in lookup_colors and lookup_chars
 output_board:
 	PUSH {r4-r12, lr}
+
+	LDR r0, ptr_to_display_erase
+    BL output_string               		; Send ESC[2J for clear screen command
+
 	MOV r4, #0 							; holds our actual position in the array, each element is a byte of data
 	MOV r5, #0							; holds the current y coord [0-30] in the map
 ; loop through each row and column
