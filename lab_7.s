@@ -38,7 +38,7 @@ pinky_cursor:	.string 27, "[20;29H", 0
 inky_cursor:	.string 27, "[11;5H", 0
 clyde_cursor:	.string 27, "[3;15H", 0
 
-pacman_loc:				.word 631	; pacman current location on board
+pacman_loc:				.word 657	; pacman current location on board
 blinky_loc:				.word 376	; blinky current location on board
 pinky_loc:				.word 379	; pinky current location on board
 inky_loc:				.word 404	; inky current location on board
@@ -230,7 +230,7 @@ board_x_val:			.equ 28		; highest x-coord for our game board
 board_y_val:			.equ 31		; highest y-coord for our game board
 
 
-pacman_start_loc:		.equ 631	; pacman current location on board
+pacman_start_loc:		.equ 657	; pacman current location on board
 blinky_start_loc:		.equ 376	; blinky current location on board
 pinky_start_loc:		.equ 379	; pinky current location on board
 inky_start_loc:			.equ 404	; inky current location on board
@@ -433,6 +433,8 @@ test_valid_check:
 	ITT EQ
 	LDREQ r11, ptr_to_pacman_dir
 	STRBEQ r6, [r11]			; r6 would still hold our pacman_next_dir
+
+	B set_pacman_loc_done
 
 test_dir_failed:
 	CMP r12, #0
