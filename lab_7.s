@@ -30,7 +30,7 @@ cursor_right: 	.string 27, "[1C", 0
 cursor_left:	.string 27, "[1D", 0
 cursor_save:	.string 27, "[s", 0
 cursor_restore: .string 27, "[u", 0
-display_erase:	.string 27, "[2J", 0
+display_erase:	.string 27, "[2J", 27, "[H", 0		; erase display and set cursor to (0,0)
 
 pacman_cursor:	.string 27, "[14;23H", 0
 blinky_cursor:	.string 27, "[4;3H", 0
@@ -39,10 +39,10 @@ inky_cursor:	.string 27, "[11;5H", 0
 clyde_cursor:	.string 27, "[3;15H", 0
 
 pacman_loc:				.word 631	; pacman current location on board
-blinky_loc:				.word 201	; blinky current location on board
-pinky_loc:				.word 132	; pinky current location on board
-inky_loc:				.word 50	; inky current location on board
-clyde_loc:				.word 808	; clyde current location on board
+blinky_loc:				.word 376	; blinky current location on board
+pinky_loc:				.word 379	; pinky current location on board
+inky_loc:				.word 404	; inky current location on board
+clyde_loc:				.word 407	; clyde current location on board
 
 
 ; LOOKUP TABLES [LUT]
@@ -231,10 +231,10 @@ board_y_val:			.equ 31		; highest y-coord for our game board
 
 
 pacman_start_loc:		.equ 631	; pacman current location on board
-blinky_start_loc:		.equ 200	; blinky current location on board
-pinky_start_loc:		.equ 132	; pinky current location on board
-inky_start_loc:			.equ 50		; inky current location on board
-clyde_start_loc:		.equ 808	; clyde current location on board
+blinky_start_loc:		.equ 376	; blinky current location on board
+pinky_start_loc:		.equ 379	; pinky current location on board
+inky_start_loc:			.equ 404	; inky current location on board
+clyde_start_loc:		.equ 407	; clyde current location on board
 
 
 ; ptr to our ANSI LUT's
@@ -307,7 +307,7 @@ lab7:
 	; we initialize pacman to starting x and y location
 	BL reset_pacman_and_ghosts
 
-
+; this will be where our main game logic is and will keep on looping
 main_loop:
 
 	;  if game is paused, keep looping to wait for unpause
@@ -327,12 +327,14 @@ main_loop:
 	STRB r5, [r4]
 
 
-
-
-
+	BL set_pacman_loc
+	BL output_pacman_and_ghosts
+	B main_loop
 
 	POP {r4-r12, lr}
 	MOV pc, lr
+
+
 
 
 ; reset pacman and ghost locations
@@ -360,8 +362,93 @@ reset_pacman_and_ghosts:
 	MOV r5, #clyde_start_loc
 	STR r5, [r4]
 
-	BL move_pacman_and_ghosts
+	BL output_pacman_and_ghosts
 
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+
+; set pacman location (pacman_loc) using pacman_next_dir (if valid - NOT WALL) or pacman_dir (keep moving in current direction)
+set_pacman_loc:
+	PUSH {r4-r12, lr}
+
+	LDR r4, ptr_to_pacman_loc
+	LDR r5, [r4]				; r5 is pacman's current location
+
+	MOV r12, #0					; r12 will store if pacman_next_dir was checked yet
+test_valid_loop:
+	; here we check if pacman_next_dir is valid first, meaning if the next space is NOT A WALL
+	; if not, we use pacman_dir
+	; if pacman_dir is also invalid, reset pacman_dir to 0 to make pacman stationary
+	CMP r12, #0
+	ITTEE EQ
+	LDREQ r6, ptr_to_pacman_next_dir
+	LDRBEQ r6, [r6]				; if checking pacman_next_dir, r6 is pacman's next direction
+	LDRNE r6, ptr_to_pacman_dir
+	LDRBNE r6, [r6]				; if checking pacman_dir, r6 is pacman's current direction
+
+	MOV r7, #0					; r7 holds the temp location we calculate
+
+	CMP r6, #1					; if pacman_next_dir = 1 = UP
+	BEQ test_valid_up
+	CMP r6, #2					; if pacman_next_dir = 2 = DOWN
+	BEQ test_valid_down
+	CMP r6, #3					; if pacman_next_dir = 3 = RIGHT
+	BEQ test_valid_right
+	CMP r6, #4					; if pacman_next_dir = 4 = LEFT
+	BEQ test_valid_left
+
+	; if dir was invalid or 0
+	B test_dir_failed
+
+test_valid_up:
+	SUB r7, r5, #28				; every row is 28 values so -28 will put us on the previous row
+	B test_valid_check
+
+test_valid_down:
+	ADD r7, r5, #28				; + 28 to move to next row
+	B test_valid_check
+
+test_valid_right:
+	ADD r7, r5, #1				; + 1 to move right 1 space or column
+	B test_valid_check
+
+test_valid_left:
+	SUB r7, r5, #1				; -1 to move left 1 space or column
+	B test_valid_check
+
+test_valid_check:
+	; check if the space is a WALL or value = 1 on board array
+	LDR r8, ptr_to_board
+	LDRB r8, [r8, r7]
+	CMP r8, #1
+	BEQ test_dir_failed
+
+	STR r7, [r4]				; since the location is valid, store in pacman_loc
+
+	; if pacman_next_dir was valid, make pacman_dir = pacman_next_dir
+	CMP r12, #0
+	ITT EQ
+	LDREQ r11, ptr_to_pacman_dir
+	STRBEQ r6, [r11]			; r6 would still hold our pacman_next_dir
+
+test_dir_failed:
+	CMP r12, #0
+	BEQ signal_check_current_dir
+
+	; if both next and current directions are invalid (walls), make pacman stationary
+	LDR r11, ptr_to_pacman_dir
+	MOV r10, #0
+	STRB r10, [r11]
+	B set_pacman_loc_done
+
+signal_check_current_dir:
+	MOV r12, #1
+	B test_valid_loop
+
+set_pacman_loc_done:
 	POP {r4-r12, lr}
 	MOV pc, lr
 
@@ -381,9 +468,9 @@ reset_ansi:
 
 
 
-; output pacman and ghost on board
+; output pacman and ghost on board based on their current LOC
 ; we build the ANSI cursor positioning string for pacman and each ghost here
-move_pacman_and_ghosts:
+output_pacman_and_ghosts:
 	PUSH {r4-r12, lr}
 
 	; we retrieve the location of our cursor_pos ANSI string here
@@ -391,11 +478,11 @@ move_pacman_and_ghosts:
 	LDR r5, ptr_to_lookup_game_char_loc
 
 	MOV r6, #0
-move_pacman_ghost_loop:
+output_pacman_ghost_loop:
 
 	; r7 would hold the location we want to calculate
 	LSL r7, r6, #2
-	LDRB r7, [r5, r7]
+	LDR r7, [r5, r7]
 	LDR r7, [r7] 			  ; holds the location of our game character
 
 	MOV r10, #board_x_val     ; r10 = 28 (Divisor)
@@ -448,24 +535,24 @@ move_pacman_ghost_loop:
 
 	ADD r6, r6, #1
 	CMP r6, #5
-	BNE move_pacman_ghost_loop
+	BNE output_pacman_ghost_loop
 
-move_pacman_ghost_loop_done:
-	POP {r4-r12}
+output_pacman_ghost_loop_done:
+	POP {r4-r12, lr}
 	MOV pc, lr
 
 
 
 
 ; output the game board to the screen
-; we will go through the map array we defined
+; we will go through the board array we defined
 ; and output the style of the individual character
 ; based on their index in lookup_colors and lookup_chars
 output_board:
 	PUSH {r4-r12, lr}
 
 	LDR r0, ptr_to_display_erase
-    BL output_string               		; Send ESC[2J for clear screen command
+    BL output_string               		; Send ESC[2J for clear screen command and reset cursor to (0,0)
 
 	MOV r4, #0 							; holds our actual position in the array, each element is a byte of data
 	MOV r5, #0							; holds the current y coord [0-30] in the map
@@ -528,15 +615,19 @@ set_pacman_next_dir:
 	MOV r4, #0			; r4 will store the temp value for pacman_next_dir
 
 	CMP r0, #0x77		; hex for 'w' or UP
+	IT EQ
 	MOVEQ r4, #1
 
 	CMP r0, #0x73		; hex for 's' or DOWN
+	IT EQ
 	MOVEQ r4, #2
 
 	CMP r0, #0x64		; hex for 'd' or RIGHT
+	IT EQ
 	MOVEQ r4, #3
 
 	CMP r0, #0x61		; hex for 'a' or LEFT
+	IT EQ
 	MOVEQ r4, #4
 
 	; if key was not equal to (w,a,s,d), keep current pacman_next_dir
@@ -603,7 +694,7 @@ switch_done:
 
 
 
-; we only refresh pacman and the ghosts here and use this to implement power pellet time
+; we only use this to update timer_tick so we know when our game needs to be refreshed
 Timer_Handler:
 	PUSH {r4-r12, lr}
 	; clear timer interrupt
