@@ -50,16 +50,16 @@ clyde_loc:				.word 808	; clyde current location on board
 ; since our table is word aligned, we can find the color to set
 ; based on our index from the map
 lookup_colors:
-	.word 	black_bg 		; index [0] - black space outside of the player moveable area
-	.word 	blue_bg			; 		[1] - player moveable area
+	.word 	black_bg 		; index [0] - black space where player CAN move
+	.word 	blue_bg			; 		[1] - outside area where player CANNOT move (walls)
 	.word 	white			; 		[2] - white character for pellet
 	.word 	white			; 		[3] - white character for power pellet
 	.word 	yellow			; 		[4] - pacman character
 	.word 	cyan_bg			; 		[5] - ghost gate at their spawn
 
 lookup_chars:
-	.byte 	" "				; index [0] - black space outside of the player moveable area
-	.byte 	" "				; 		[1] - player moveable area
+	.byte 	" "				; index [0] - black space where player CAN move
+	.byte 	" "				; 		[1] - outside area where player CANNOT move (walls)
 	.byte 	"."				;		[2] - white character for pellet
 	.byte 	"o"				; 		[3] - white character for power pellet
 	.byte 	"<"				; 		[4] - pacman character
