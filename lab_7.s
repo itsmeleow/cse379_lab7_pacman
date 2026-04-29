@@ -154,6 +154,9 @@ paused:				.byte 0	; stores game pause state
 score:				.byte 0 ; user score
 lives:				.byte 0 ; user lives
 pwr_tmr:		    .byte 0 ; timer for power pellet
+timer_tick:			.byte 0	; used for if timer refresh occurs
+								; 0 - no refresh
+								; 1 - refresh
 pwr_active:			.byte 0 ; stores if pacman ate power pellet
 								; 0 = no power pellet
 								; 1 = power pellet eaten
@@ -163,6 +166,8 @@ pacman_dir:			.byte 0 ; stores pacmans current direction
 								; 2 - down
 								; 3 - right
 								; 4 - left
+pacman_next_dir:	.byte 0	; user inputted direction (same states as pacman_dir but may be invalid, use next_dir if movement is valid)
+
 blinky_dir:			.byte 0 ; stores blinky current direction
 								; 0 - stationary
 								; 1 - up
@@ -260,7 +265,9 @@ ptr_to_score:			.word score
 ptr_to_lives:			.word lives
 ptr_to_pwr_tmr:  		.word pwr_tmr
 ptr_to_pwr_active:		.word pwr_active
+ptr_to_timer_tick:		.word timer_tick
 ptr_to_pacman_dir: 		.word pacman_dir
+ptr_to_pacman_next_dir:	.word pacman_next_dir
 ptr_to_blinky_dir:		.word blinky_dir
 ptr_to_pinky_dir:		.word pinky_dir
 ptr_to_inky_dir:		.word inky_dir
@@ -277,23 +284,51 @@ lab7:
 	BL gpio_interrupt_init
 	BL timer_interrupt_init
 
+	; output initial board
 	BL output_board
+
 	; Set lives to 4, use Mask
 	MOV r4, #0x0F
 	LDR r5, ptr_to_lives
 	STRB r4, [r5]
 
-	; Set pellet timer to 0, reset power timer
-RESET_POWER_PELLET:
-	MOV r4, #1
-	MOV r10, #11
+	; initialize timer tick = 0 so don't do anything to board yet
+	MOV r4, #0
+	LDR r5, ptr_to_timer_tick
+	STRB r4, [r5]
+
+	; Set power pellet timer to 0, reset power timer
+	MOV r10, #0
 	LDR r5, ptr_to_pwr_tmr
 	STRB r10, [r5]
 	LDR r5, ptr_to_pwr_active
-	STRB r4, [r5]
+	STRB r10, [r5]
 
 	; we initialize pacman to starting x and y location
 	BL reset_pacman_and_ghosts
+
+
+main_loop:
+
+	;  if game is paused, keep looping to wait for unpause
+	LDR r4, ptr_to_paused
+	LDRB r5, [r4]
+	CMP r5, #1
+	BEQ main_loop
+
+	; if timer_tick is 0 (timer_handler didn't trigger), keep looping to wait for timer
+	LDR r4, ptr_to_timer_tick
+	LDRB r5, [r4]
+	CMP r5, #0
+	BEQ main_loop
+
+	; if timer_tick is 1, reset to 0 to get ready for next refresh
+	MOV r5, #0
+	STRB r5, [r4]
+
+
+
+
 
 
 	POP {r4-r12, lr}
@@ -307,27 +342,27 @@ reset_pacman_and_ghosts:
 
 	LDR r4, ptr_to_pacman_loc
 	MOV r5, #pacman_start_loc
-	STRB r5, [r4]
+	STR r5, [r4]
 
 	LDR r4, ptr_to_blinky_loc
 	MOV r5, #blinky_start_loc
-	STRB r5, [r4]
+	STR r5, [r4]
 
 	LDR r4, ptr_to_pinky_loc
 	MOV r5, #pinky_start_loc
-	STRB r5, [r4]
+	STR r5, [r4]
 
 	LDR r4, ptr_to_inky_loc
 	MOV r5, #inky_start_loc
-	STRB r5, [r4]
+	STR r5, [r4]
 
 	LDR r4, ptr_to_clyde_loc
 	MOV r5, #clyde_start_loc
-	STRB r5, [r4]
+	STR r5, [r4]
 
 	BL move_pacman_and_ghosts
 
-	POP {r4-r12}
+	POP {r4-r12, lr}
 	MOV pc, lr
 
 
@@ -360,7 +395,8 @@ move_pacman_ghost_loop:
 
 	; r7 would hold the location we want to calculate
 	LSL r7, r6, #2
-	LDRB r7, [r5, r7]			; holds the location of our game character
+	LDRB r7, [r5, r7]
+	LDR r7, [r7] 			  ; holds the location of our game character
 
 	MOV r10, #board_x_val     ; r10 = 28 (Divisor)
 	UDIV r8, r7, r10          ; r8 = location / 28 (Row / Y-value)
@@ -400,7 +436,8 @@ move_pacman_ghost_loop:
 
 	; output color (yellow, pink, red, blue, orange)
 	LDR r8, ptr_to_lookup_game_char_colors
-	LDRB r0, [r8, #16]					; index 4 in our lookup_colors table
+	LSL r9, r6, #2
+	LDR r0, [r8, r9]					; index 4 in our lookup_colors table
 	BL output_string
 	; output character (<) or (A)
 	CMP r6, #0
@@ -482,33 +519,38 @@ output_done:
 
 
 
-; try to implement moving pacman here using ANSI cursor controls
-; the Timer_handler will call this to ensure that pacman moves max once per clock period
-move_pacman:
-	PUSH {r4-r12, lr}
-
-
-
-
-
-	POP {r4-r12, lr}
-	MOV pc, lr
-
-
-
-
 ; set pacmans next direction here
-; -> however, we need to check if the new position is valid
-; invalid if not valid ascii for [w,a,s,d] or if next block
-; is out of the moveable area
-set_pacman_dir:
+; -> simply set pacman_next_dir to (w,a,s,d) to (1,4,2,3) based on r0 set by UART0_Handler
+; -> ignore if the users desired direction is valid or not here
+set_pacman_next_dir:
 	PUSH {r4-r12, lr}
 
-	; we first check if pacmans next position would be valid
-	; if not, we can just keep the same position and return
+	MOV r4, #0			; r4 will store the temp value for pacman_next_dir
 
+	CMP r0, #0x77		; hex for 'w' or UP
+	MOVEQ r4, #1
+
+	CMP r0, #0x73		; hex for 's' or DOWN
+	MOVEQ r4, #2
+
+	CMP r0, #0x64		; hex for 'd' or RIGHT
+	MOVEQ r4, #3
+
+	CMP r0, #0x61		; hex for 'a' or LEFT
+	MOVEQ r4, #4
+
+	; if key was not equal to (w,a,s,d), keep current pacman_next_dir
+	CMP r4, #0
+	BEQ set_pacman_next_dir_done
+
+	; store r4 in pacman_next_dir
+	LDR r5, ptr_to_pacman_next_dir
+	STRB r4, [r5]
+
+set_pacman_next_dir_done:
 	POP {r4-r12, lr}
 	MOV pc, lr
+
 
 
 
@@ -521,8 +563,8 @@ UART0_Handler:
 	; read the character passed to our UART0 Data Register
 	BL simple_read_character
 
-	; set pacman direction
-	BL set_pacman_dir
+	; set pacman next direction
+	BL set_pacman_next_dir
 
 
 	POP {r4-r12, lr}
@@ -560,22 +602,21 @@ switch_done:
 
 
 
+
 ; we only refresh pacman and the ghosts here and use this to implement power pellet time
 Timer_Handler:
 	PUSH {r4-r12, lr}
 	; clear timer interrupt
 	BL timer_clear_interrupt
 
-	LDR r5, ptr_to_pwr_active	; Check if power is active
-	LDRB r6, [r5]
-	CMP r6, #1
-
-	BEQ DECREMENT_COUNTER		; Decrement counter if it is active
-
-	BL move_pacman				; every refresh, pacman moves based on pacman_dir
+	; set timer_tick so our main_loop knows that a refresh occured
+	LDR r4, ptr_to_timer_tick
+	MOV r5, #1
+	STRB r5, [r4]
 
 	POP {r4-r12, lr}
 	BX lr
+
 
 
 
