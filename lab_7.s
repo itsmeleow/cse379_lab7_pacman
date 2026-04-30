@@ -36,6 +36,7 @@ display_erase:	.string 27, "[2J", 27, "[H", 0		; erase display and set cursor to
 ready_text:		.string 27, "[18;12HREADY!", 0
 paused_text:	.string 27, "[18;12HPAUSED", 0
 blank_text:		.string 27, "[18;12H      ", 0
+lose_text:		.string 27, "[18;12HYOU LOSE!", 0
 
 score_label:	.string 27, "[33;1HSCORE: 0000", 0
 
@@ -51,6 +52,10 @@ blinky_old_loc:		.word 376
 pinky_old_loc:		.word 379
 inky_old_loc:		.word 404
 clyde_old_loc:		.word 407
+
+
+ghosts_released:	.byte 1				; holds the number of ghosts released
+ghost_release_tmr:	.byte 0				; counts the number of refreshes that occured so we can release the ghosts periodically
 
 
 
@@ -323,6 +328,8 @@ ptr_to_board:					.word board
 ptr_to_ready_text:	.word ready_text
 ptr_to_paused_text:	.word paused_text
 ptr_to_blank_text:	.word blank_text
+ptr_to_lose_text:	.word lose_text
+
 ptr_to_score_label:	.word score_label
 
 ; ptr to pacman and all ghost locations
@@ -350,6 +357,8 @@ ptr_to_clyde_dir:		.word clyde_dir
 ptr_to_pellets_remain: 	.word pellets_remain
 ptr_to_num_ghost_eaten:	.word num_ghost_eaten
 
+ptr_to_ghosts_released:	.word ghosts_released
+ptr_to_ghost_release_tmr: .word ghost_release_tmr
 
 
 lab7:
@@ -395,6 +404,20 @@ lab7:
 	LDR r0, ptr_to_blank_text
 	BL output_string
 
+	; reset the number of ghosts released
+	LDR r4, ptr_to_ghosts_released
+	MOV r5, #1			; we have 1 ghost initially out
+	STRB r5, [r4]
+
+	LDR r4, ptr_to_ghost_release_tmr
+	MOV r5, #0
+	STRB r5, [r4]
+
+	LDR r4, ptr_to_blinky_loc
+	MOV r5, #blinky_free_loc
+	STR r5, [r4]
+
+
 ; this will be where our main game logic is and will keep on looping
 main_loop:
 
@@ -417,6 +440,7 @@ main_loop:
 	BL save_old_char_locs
 	BL set_pacman_loc
 	BL check_ghost_touched
+	BL release_ghosts
 	BL set_all_ghost_locs
 	BL check_ghost_touched
 	BL output_pacman_and_ghosts
@@ -847,10 +871,69 @@ ghost_done:
 
 
 
-; set all ghost location
+; this releases all 4 ghosts 1 by 1 so they dont all come out at the same time
+release_ghosts:
+	PUSH {r4-r12, lr}
+
+	LDR r4, ptr_to_ghosts_released
+	LDRB r5, [r4]
+			; r5 holds the number of ghosts that are released (initally 1 so blinky gets released)
+
+
+	; if all 4 free, finish
+	CMP r5, #4
+	BEQ release_ghosts_done
+
+	LDR r6, ptr_to_ghost_release_tmr
+	LDRB r7, [r6]
+	ADD r7, r7, #1
+	STRB r7, [r6]
+
+	CMP r7, #8				; we can do an arbitrary time
+	BLT release_ghosts_done
+
+	MOV r7, #0
+	STRB r7, [r6]
+
+	ADD r5, r5, #1
+	STRB r5, [r4]
+
+	CMP r5, #2
+	BNE check_release_inky
+	LDR r8, ptr_to_pinky_loc
+	MOV r9, #pinky_free_loc
+	STR r9, [r8]
+	B release_ghosts_done
+
+check_release_inky:
+	CMP r5, #3
+	BNE check_release_clyde
+	LDR r8, ptr_to_inky_loc
+	MOV r9, #inky_free_loc
+	STR r9, [r8]
+	B release_ghosts_done
+
+check_release_clyde:
+	CMP r5, #4
+	BNE release_ghosts_done
+	LDR r8, ptr_to_clyde_loc
+	MOV r9, #clyde_free_loc
+	STR r9, [r8]
+
+release_ghosts_done:
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+
+; set all ghost location (only if they are free from the ghost gate)
 ; for blinky, pinky, inky, clyde
 set_all_ghost_locs:
 	PUSH {r4-r12, lr}
+
+	LDR r11, ptr_to_ghosts_released
+	LDRB r12, [r11]				; stores the amount of ghosts we should release
 
 	LDR r4, ptr_to_blinky_loc
 	LDR r5, ptr_to_blinky_dir
@@ -858,24 +941,31 @@ set_all_ghost_locs:
 	MOV r2, r5
 	BL set_ghost_loc
 
+	CMP r12, #2
+	BLT set_all_ghost_locs_done		; finish if the max we release is 2 since they are stuck in ghost gate
 	LDR r4, ptr_to_pinky_loc
 	LDR r5, ptr_to_pinky_dir
 	MOV r1, r4
 	MOV r2, r5
 	BL set_ghost_loc
 
+	CMP r12, #3
+	BLT set_all_ghost_locs_done		; finish if the max we release is 2 since they are stuck in ghost gate
 	LDR r4, ptr_to_inky_loc
 	LDR r5, ptr_to_inky_dir
 	MOV r1, r4
 	MOV r2, r5
 	BL set_ghost_loc
 
+	CMP r12, #4
+	BLT set_all_ghost_locs_done		; finish if the max we release is 2 since they are stuck in ghost gate
 	LDR r4, ptr_to_clyde_loc
 	LDR r5, ptr_to_clyde_dir
 	MOV r1, r4
 	MOV r2, r5
 	BL set_ghost_loc
 
+set_all_ghost_locs_done:
 	POP {r4-r12, lr}
 	MOV pc, lr
 
@@ -1483,8 +1573,16 @@ DECREMENT_DONE:
 
 ; game ends when all 4 lives are lost
 YOU_LOSE:
+	PUSH {r4-r12, lr}
 	; lose
 
+	BL pause_timer
+
+	LDR r0, ptr_to_lose_text
+	BL output_string
+
+	POP {r4-r12, lr}
+	MOV pc, lr
 
 
 
