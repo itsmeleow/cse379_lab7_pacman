@@ -22,7 +22,7 @@ cyan_bg:	.string 27, "[48;5;50m", 0
 ; LINE = horizontal row
 ; COLUMN = verital column
 cursor_template:
-    .byte 0x1B, "[00;00H", 0
+    .byte 0x1B, "[23;13H", 0
 cursor_nomove:	.string 27, "[0A", 0
 cursor_up:		.string 27, "[1A", 0
 cursor_down: 	.string 27, "[1B", 0
@@ -32,17 +32,17 @@ cursor_save:	.string 27, "[s", 0
 cursor_restore: .string 27, "[u", 0
 display_erase:	.string 27, "[2J", 27, "[H", 0		; erase display and set cursor to (0,0)
 
-pacman_cursor:	.string 27, "[14;23H", 0
-blinky_cursor:	.string 27, "[4;3H", 0
-pinky_cursor:	.string 27, "[20;29H", 0
-inky_cursor:	.string 27, "[11;5H", 0
-clyde_cursor:	.string 27, "[3;15H", 0
-
 pacman_loc:				.word 657	; pacman current location on board
 blinky_loc:				.word 376	; blinky current location on board
 pinky_loc:				.word 379	; pinky current location on board
 inky_loc:				.word 404	; inky current location on board
 clyde_loc:				.word 407	; clyde current location on board
+
+pacman_old_loc:		.word 657
+blinky_old_loc:		.word 376
+pinky_old_loc:		.word 379
+inky_old_loc:		.word 404
+clyde_old_loc:		.word 407
 
 
 ; LOOKUP TABLES [LUT]
@@ -73,6 +73,13 @@ lookup_cursor:
 	.word cursor_right		;  		[3] - move cursor (right 1) space
 	.word cursor_left		;  		[4]	- move cursor (left 1) space
 
+lookup_dir_change:
+	.word 0					; index [0] - don't move
+	.word -28				;  		[1] - (up 1) space
+	.word 28				;  		[2] - (down 1) space
+	.word 1					;  		[3] - (right 1) space
+	.word -1				;  		[4]	- (left 1) space
+
 ; we use a LUT to loop through all the characters on the board
 lookup_game_char_loc:
 	.word pacman_loc		; index [0] - pacman current location on board
@@ -80,14 +87,6 @@ lookup_game_char_loc:
 	.word pinky_loc			; 		[2] - pinky current location on board
 	.word inky_loc			; 		[3] - inky current location on board
 	.word clyde_loc			; 		[4] - clyde current location on board
-
-; we use a LUT to loop through all the characters cursors
-lookup_char_cursors:
-	.word pacman_cursor		; index [0] - pacman cursor
-	.word blinky_cursor		; 		[1] - blinky cursor
-	.word pinky_cursor		; 		[2] - pinky cursor
-	.word inky_cursor		; 		[3] - inky cursor
-	.word clyde_cursor		; 		[4] - clyde cursor
 
 ; we use a LUT to loop through all the characters colors
 lookup_game_char_colors:
@@ -105,8 +104,58 @@ lookup_char_dir:
 	.word inky_dir			; 		[3] - inky dir
 	.word clyde_dir			; 		[4] - clyde dir
 
+; stores the old location of each
+lookup_old_char_loc:
+    .word pacman_old_loc
+    .word blinky_old_loc
+    .word pinky_old_loc
+    .word inky_old_loc
+    .word clyde_old_loc
+
+
+; board that is preserved throughout levels
+board_template:
+    ; row 0 to 5
+    .byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+    .byte 1,2,2,2,2,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,2,2,2,2,2,1
+    .byte 1,2,1,1,1,1,2,1,1,1,1,1,2,1,1,2,1,1,1,1,1,2,1,1,1,1,2,1
+    .byte 1,3,1,1,1,1,2,1,1,1,1,1,2,1,1,2,1,1,1,1,1,2,1,1,1,1,3,1
+    .byte 1,2,1,1,1,1,2,1,1,1,1,1,2,1,1,2,1,1,1,1,1,2,1,1,1,1,2,1
+    .byte 1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1
+    ; row 6 to 11
+    .byte 1,2,1,1,1,1,2,1,1,2,1,1,1,1,1,1,1,1,2,1,1,2,1,1,1,1,2,1
+    .byte 1,2,1,1,1,1,2,1,1,2,1,1,1,1,1,1,1,1,2,1,1,2,1,1,1,1,2,1
+    .byte 1,2,2,2,2,2,2,1,1,2,2,2,2,1,1,2,2,2,2,1,1,2,2,2,2,2,2,1
+    .byte 1,1,1,1,1,1,2,1,1,1,1,1,0,1,1,0,1,1,1,1,1,2,1,1,1,1,1,1
+    .byte 0,0,0,0,0,1,2,1,1,1,1,1,0,1,1,0,1,1,1,1,1,2,1,0,0,0,0,0
+    .byte 0,0,0,0,0,1,2,1,1,0,0,0,0,0,0,0,0,0,0,1,1,2,1,0,0,0,0,0
+    ; row 12 to 17 (center - ghost spawn location)
+    .byte 0,0,0,0,0,1,2,1,1,0,1,1,1,5,5,1,1,1,0,1,1,2,1,0,0,0,0,0
+    .byte 1,1,1,1,1,1,2,1,1,0,1,0,0,0,0,0,0,1,0,1,1,2,1,1,1,1,1,1
+    .byte 0,0,0,0,0,0,2,0,0,0,1,0,0,0,0,0,0,1,0,0,0,2,0,0,0,0,0,0 ; gate to keep ghosts in - row 14
+    .byte 1,1,1,1,1,1,2,1,1,0,1,0,0,0,0,0,0,1,0,1,1,2,1,1,1,1,1,1
+    .byte 0,0,0,0,0,1,2,1,1,0,1,1,1,1,1,1,1,1,0,1,1,2,1,0,0,0,0,0
+    .byte 0,0,0,0,0,1,2,1,1,0,0,0,0,0,0,0,0,0,0,1,1,2,1,0,0,0,0,0
+    ; row 18 to 23 (pacman spawn location)
+    .byte 0,0,0,0,0,1,2,1,1,0,1,1,1,1,1,1,1,1,0,1,1,2,1,0,0,0,0,0
+    .byte 1,1,1,1,1,1,2,1,1,0,1,1,1,1,1,1,1,1,0,1,1,2,1,1,1,1,1,1
+    .byte 1,2,2,2,2,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,2,2,2,2,2,1
+    .byte 1,2,1,1,1,1,2,1,1,1,1,1,2,1,1,2,1,1,1,1,1,2,1,1,1,1,2,1
+    .byte 1,2,1,1,1,1,2,1,1,1,1,1,2,1,1,2,1,1,1,1,1,2,1,1,1,1,2,1
+    .byte 1,3,2,2,1,1,2,2,2,2,2,2,2,0,0,2,2,2,2,2,2,2,1,1,2,2,3,1 ; pacman spawns here - row 23
+    ; row 24 to 30
+    .byte 1,1,1,2,1,1,2,1,1,2,1,1,1,1,1,1,1,1,2,1,1,2,1,1,2,1,1,1
+    .byte 1,1,1,2,1,1,2,1,1,2,1,1,1,1,1,1,1,1,2,1,1,2,1,1,2,1,1,1
+    .byte 1,2,2,2,2,2,2,1,1,2,2,2,2,1,1,2,2,2,2,1,1,2,2,2,2,2,2,1
+    .byte 1,2,1,1,1,1,1,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,1,1,1,1,2,1
+    .byte 1,2,1,1,1,1,1,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,1,1,1,1,2,1
+    .byte 1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1
+    .byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+
+
 
 ; the game board is a 28 x 31 characters
+; this board we update to reflect pellets being eaten
 board:
     ; row 0 to 5
     .byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
@@ -192,8 +241,8 @@ clyde_dir:			.byte 0 ; stores clyde current direction
 								; 2 - down
 								; 3 - right
 								; 4 - left
-
-
+pellets_remain:		.word 0	; stores the number of pellets that remain on the board
+num_ghost_eaten:	.word 0	; stores the number of ghosts eaten (0-3) that corresponds to how many pts awarded, resets every power pellet
 
 	.text
 	; imported subroutines from lab 7 library
@@ -245,9 +294,11 @@ ptr_to_cursor_template:			.word cursor_template
 ptr_to_lookup_colors: 			.word lookup_colors
 ptr_to_lookup_chars:			.word lookup_chars
 ptr_to_lookup_cursor:			.word lookup_cursor
+ptr_to_lookup_dir_change:		.word lookup_dir_change
 ptr_to_lookup_game_char_loc: 	.word lookup_game_char_loc
-ptr_to_lookup_char_cursors:		.word lookup_char_cursors
 ptr_to_lookup_game_char_colors:	.word lookup_game_char_colors
+ptr_to_lookup_old_char_loc:		.word lookup_old_char_loc
+ptr_to_board_template:			.word board_template
 ptr_to_board:					.word board
 
 
@@ -272,8 +323,8 @@ ptr_to_blinky_dir:		.word blinky_dir
 ptr_to_pinky_dir:		.word pinky_dir
 ptr_to_inky_dir:		.word inky_dir
 ptr_to_clyde_dir:		.word clyde_dir
-
-
+ptr_to_pellets_remain: 	.word pellets_remain
+ptr_to_num_ghost_eaten:	.word num_ghost_eaten
 
 
 lab7:
@@ -285,6 +336,7 @@ lab7:
 	BL timer_interrupt_init
 
 	; output initial board
+	BL reset_board_and_pellets
 	BL output_board
 
 	; Set lives to 4, use Mask
@@ -326,13 +378,51 @@ main_loop:
 	MOV r5, #0
 	STRB r5, [r4]
 
-
+	BL save_old_char_locs
 	BL set_pacman_loc
+	BL set_all_ghost_locs
 	BL output_pacman_and_ghosts
+
 	B main_loop
 
 	POP {r4-r12, lr}
 	MOV pc, lr
+
+
+
+
+; copy board_template into board so board contains pellets/walls for next level
+; sets the number of pellets_remain
+reset_board_and_pellets:
+    PUSH {r4-r12, lr}
+
+    LDR r4, ptr_to_board_template
+    LDR r5, ptr_to_board
+    MOV r6, #0					; index on the board
+    MOV r12, #0					; number of pellets on the board
+
+reset_board_loop:
+    CMP r6, #868				; 28 x 31 board gives 868 available spaces
+    BEQ reset_board_done
+
+    LDRB r7, [r4, r6]
+    CMP r7, #2					; if that space has a pellet, increment number of pellets
+    IT EQ
+    ADDEQ r12, r12, #1
+    CMP r7, #3					; if that space has a power pellet, increment number of pellets
+    IT EQ
+    ADDEQ r12, r12, #1
+    STRB r7, [r5, r6]
+
+    ADD r6, r6, #1
+    B reset_board_loop
+
+reset_board_done:
+	LDR r10, ptr_to_pellets_remain
+	STR r12, [r10]				; store the total pellets in pellets_remain
+
+    POP {r4-r12, lr}
+    MOV pc, lr
 
 
 
@@ -370,7 +460,34 @@ reset_pacman_and_ghosts:
 
 
 
+; save current pacman/ghost locations into old locations before setting new location
+save_old_char_locs:
+	PUSH {r4-r12, lr}
+
+	LDR r4, ptr_to_lookup_game_char_loc
+	LDR r5, ptr_to_lookup_old_char_loc
+	MOV r6, #0
+
+save_old_char_loc_loop:
+	LSL r7, r6, #2
+
+	LDR r8, [r4, r7]		; ptr to characters current loc
+	LDR r9, [r8]			; r9 is characters current board index
+
+	LDR r10, [r5, r7]		; ptr to characters old loc
+	STR r9, [r10]			; store r9 current at r10 old loc
+
+	ADD r6, r6, #1
+	CMP r6, #5
+	BNE save_old_char_loc_loop
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
 ; set pacman location (pacman_loc) using pacman_next_dir (if valid - NOT WALL) or pacman_dir (keep moving in current direction)
+; check if
 set_pacman_loc:
 	PUSH {r4-r12, lr}
 
@@ -389,7 +506,7 @@ test_valid_loop:
 	LDRNE r6, ptr_to_pacman_dir
 	LDRBNE r6, [r6]				; if checking pacman_dir, r6 is pacman's current direction
 
-	MOV r7, #0					; r7 holds the temp location we calculate
+	MOV r7, r5					; r7 will hold the temp location we calculate
 
 	CMP r6, #1					; if pacman_next_dir = 1 = UP
 	BEQ test_valid_up
@@ -428,6 +545,49 @@ test_valid_check:
 
 	STR r7, [r4]				; since the location is valid, store in pacman_loc
 
+    ; check what pacman will move on to on the board
+    LDR r8, ptr_to_board
+    LDRB r9, [r8, r7]
+
+    CMP r9, #2					; check if normal pellet
+    BEQ ate_normal_pellet
+    CMP r9, #3
+    BEQ ate_power_pellet		; check if power pellet
+    B no_pellets
+
+ate_normal_pellet:
+    ; clear the pellet tile
+    MOV r10, #0
+    STRB r10, [r8, r7]
+
+    ; decrement pellets_remain
+    LDR r11, ptr_to_pellets_remain
+    LDR r10, [r11]
+    SUB r10, r10, #1
+    STR r10, [r11]
+
+    ; INCREMENT OUR SCORE HERE
+    CMP r10, #0
+    BEQ NEXT_STAGE
+    B no_pellets
+
+ate_power_pellet:
+    ; clear the power pellet tile
+    MOV r10, #0
+    STRB r10, [r8, r7]
+
+    ; decrement pellets_remain
+    LDR r11, ptr_to_pellets_remain
+    LDR r10, [r11]
+    SUB r10, r10, #1
+    STR r10, [r11]
+
+    BL GAIN_POWER
+
+    CMP r10, #0
+    BEQ NEXT_STAGE
+
+no_pellets:
 	; if pacman_next_dir was valid, make pacman_dir = pacman_next_dir
 	CMP r12, #0
 	ITT EQ
@@ -457,6 +617,209 @@ set_pacman_loc_done:
 
 
 
+; REWRITE THIS
+; set one ghost location using its current direction first
+; if current direction is invalid, try other directions
+; do not allow, reverse unless no other direction works
+; preserved registers used here
+;   r1 = ptr to ghost location
+;   r2 = ptr to ghost direction
+set_ghost_loc:
+	PUSH {r4-r12, lr}
+
+	MOV r4, r1					; r4 = ptr to ghost loc
+	MOV r5, r2					; r5 = ptr to ghost dir
+
+	LDR r6, [r4]				; r6 = ghost current location
+	LDRB r7, [r5]				; r7 = ghost current direction
+
+	; r12 which direction we are checking we are in:
+			; 0 = try ghost current dir
+			; 1 = try up
+			; 2 = try down
+			; 3 = try right
+			; 4 = try left
+			; 5 = try reverse dir as last resort
+	MOV r12, #0
+
+ghost_test_loop:
+	; choose direction to test into r8
+	CMP r12, #0
+	BEQ use_current_dir
+	CMP r12, #1
+	BEQ use_up
+	CMP r12, #2
+	BEQ use_down
+	CMP r12, #3
+	BEQ use_right
+	CMP r12, #4
+	BEQ use_left
+	CMP r12, #5
+	BEQ use_reverse
+	B ghost_stop
+
+use_current_dir:
+	MOV r8, r7
+	B ghost_skip_reverse_check
+
+use_up:
+	MOV r8, #1
+	B ghost_check_reverse
+
+use_down:
+	MOV r8, #2
+	B ghost_check_reverse
+
+use_right:
+	MOV r8, #3
+	B ghost_check_reverse
+
+use_left:
+	MOV r8, #4
+	B ghost_check_reverse
+
+use_reverse:
+	; figure out the reverse of current ghost direction
+	MOV r8, #0
+	CMP r7, #1
+	IT EQ
+	MOVEQ r8, #2
+	CMP r7, #2
+	IT EQ
+	MOVEQ r8, #1
+	CMP r7, #3
+	IT EQ
+	MOVEQ r8, #4
+	CMP r7, #4
+	IT EQ
+	MOVEQ r8, #3
+	B ghost_skip_reverse_check
+
+ghost_check_reverse:
+	; when trying alternate directions, skip the reverse direction
+	; if up != or cannot move down, down != up, right != left, left != right
+	CMP r7, #1
+	BEQ rev_from_up
+	CMP r7, #2
+	BEQ rev_from_down
+	CMP r7, #3
+	BEQ rev_from_right
+	CMP r7, #4
+	BEQ rev_from_left
+	B ghost_skip_reverse_check
+
+rev_from_up:
+	CMP r8, #2
+	BEQ ghost_try_next_choice
+	B ghost_skip_reverse_check
+
+rev_from_down:
+	CMP r8, #1
+	BEQ ghost_try_next_choice
+	B ghost_skip_reverse_check
+
+rev_from_right:
+	CMP r8, #4
+	BEQ ghost_try_next_choice
+	B ghost_skip_reverse_check
+
+rev_from_left:
+	CMP r8, #3
+	BEQ ghost_try_next_choice
+
+ghost_skip_reverse_check:
+	; direction 0 so stationary
+	CMP r8, #0
+	BEQ ghost_try_next_choice
+
+	; compute candidate next location into r9
+	MOV r9, r6
+	CMP r8, #1
+	BEQ ghost_test_up
+	CMP r8, #2
+	BEQ ghost_test_down
+	CMP r8, #3
+	BEQ ghost_test_right
+	CMP r8, #4
+	BEQ ghost_test_left
+	B ghost_try_next_choice
+
+ghost_test_up:
+	SUB r9, r6, #28
+	B ghost_test_tile
+
+ghost_test_down:
+	ADD r9, r6, #28
+	B ghost_test_tile
+
+ghost_test_right:
+	ADD r9, r6, #1
+	B ghost_test_tile
+
+ghost_test_left:
+	SUB r9, r6, #1
+
+ghost_test_tile:
+	; check if space is wall
+	LDR r10, ptr_to_board
+	LDRB r11, [r10, r9]
+	CMP r11, #1
+	BEQ ghost_try_next_choice
+
+	; if not a wall, the location is valid so we can store new location and new direction
+	STR r9, [r4]
+	STRB r8, [r5]
+	B ghost_done
+
+ghost_try_next_choice:
+	ADD r12, r12, #1
+	CMP r12, #6
+	BLT ghost_test_loop
+
+ghost_stop:
+	; no valid direction found, leave ghost where it is
+ghost_done:
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+
+; set all ghost location
+; for blinky, pinky, inky, clyde
+set_all_ghost_locs:
+	PUSH {r4-r12, lr}
+
+	LDR r4, ptr_to_blinky_loc
+	LDR r5, ptr_to_blinky_dir
+	MOV r1, r4
+	MOV r2, r5
+	BL set_ghost_loc
+
+	LDR r4, ptr_to_pinky_loc
+	LDR r5, ptr_to_pinky_dir
+	MOV r1, r4
+	MOV r2, r5
+	BL set_ghost_loc
+
+	LDR r4, ptr_to_inky_loc
+	LDR r5, ptr_to_inky_dir
+	MOV r1, r4
+	MOV r2, r5
+	BL set_ghost_loc
+
+	LDR r4, ptr_to_clyde_loc
+	LDR r5, ptr_to_clyde_dir
+	MOV r1, r4
+	MOV r2, r5
+	BL set_ghost_loc
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+
 ; reset ANSI styling (background and foreground coloring)
 reset_ansi:
 	PUSH {r4-r12, lr}
@@ -470,16 +833,19 @@ reset_ansi:
 
 
 
-; output pacman and ghost on board based on their current LOC
+; output pacman and ghost on board based on their current LOC and erase from old LOC (replace with board value)
 ; we build the ANSI cursor positioning string for pacman and each ghost here
 output_pacman_and_ghosts:
 	PUSH {r4-r12, lr}
 
-	; we retrieve the location of our cursor_pos ANSI string here
-	LDR r4, ptr_to_lookup_char_cursors
-	LDR r5, ptr_to_lookup_game_char_loc
+	MOV r4, #0				; holds where we erased old LOC yet (0) - no (1) - yes
+erase_loop:
+	CMP r4, #0
+	ITE EQ
+	LDREQ r5, ptr_to_lookup_old_char_loc
+	LDRNE r5, ptr_to_lookup_game_char_loc		; if we erased the old LOC, move on to outputting the new location
 
-	MOV r6, #0
+	MOV r6, #0				; loop variable to go through the game_char_loc lookup table
 output_pacman_ghost_loop:
 
 	; r7 would hold the location we want to calculate
@@ -512,6 +878,7 @@ output_pacman_ghost_loop:
 	ADD r9, r9, #0x30			; r10 holds the ascii ones value of x-value
 	ADD r7, r7, #0x30			; r7 holds the ascii tens value of x-value
 
+
 	LDR r12, ptr_to_cursor_template
 	; ESC[y;xH
 	STRB r8, [r12, #2]
@@ -523,6 +890,31 @@ output_pacman_ghost_loop:
 	MOV r0, r12 		; first, set the cursor to that position
 	BL output_string
 
+	; check if we're erasing or outputting
+	CMP r4, #1
+	BEQ new_position
+
+	; no branch = erase
+	LSL r7, r6, #2
+	LDR r7, [r5, r7]
+	LDR r7, [r7] 			  ; holds the location of our game character
+	LDR r8, ptr_to_board		; find what is at that location on board
+	LDRB r7, [r8, r7]			; r7 holds value on board
+
+	; output background
+	LDR r8, ptr_to_lookup_colors
+	LSL r9, r7, #2
+	LDR r0, [r8, r9]
+	BL output_string
+
+	LDR r8, ptr_to_lookup_chars
+	LDRB r0, [r8, r7]
+	BL output_character
+
+	B continue_erase_or_output
+
+
+new_position:
 	; output color (yellow, pink, red, blue, orange)
 	LDR r8, ptr_to_lookup_game_char_colors
 	LSL r9, r6, #2
@@ -535,9 +927,17 @@ output_pacman_ghost_loop:
 	MOVNE r0, #0x41						; else, just (A) for ghosts
 	BL output_character
 
+continue_erase_or_output:
+	BL reset_ansi
 	ADD r6, r6, #1
 	CMP r6, #5
 	BNE output_pacman_ghost_loop
+
+erase_or_output_done:
+	CMP r4, #1
+	BEQ output_pacman_ghost_loop_done
+	MOV r4, #1
+	B erase_loop
 
 output_pacman_ghost_loop_done:
 	POP {r4-r12, lr}
@@ -712,6 +1112,16 @@ Timer_Handler:
 
 
 
+; scoring subroutines
+score_10_points:
+	PUSH {r4-r12, lr}
+
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
 
 LOSE_LIFE: ; Checks how many lives, then removes a life
 	; Add some sort of pause when life taken
@@ -738,8 +1148,8 @@ GAIN_POWER: ; Indicate when power pellet is active
 	MOV r6, #1
 	STRB r6, [r5]			; Set power to 1, = power activated
 	LDR r5, ptr_to_pwr_tmr
-	MOV r6, #20
-	STRB r6, [r5]			; Set timer to 20 ticks (5 seconds), resets everytime power eaten
+	MOV r6, #60
+	STRB r6, [r5]			; Set timer to 50 ticks (15 seconds), resets everytime power eaten
 
 	BL turn_blue_led_on
 
@@ -777,11 +1187,33 @@ DECREMENT_DONE:
 	POP {r4-r12, lr}
 	MOV pc, lr
 
+
+
+
+; game ends when all 4 lives are lost
 YOU_LOSE:
 	; lose
 
+
+
+
+; move on to next level
+; ADD LATER - decrement the refresh rate here
 NEXT_STAGE:
 	; next stage
+	PUSH {r4-r12, lr}
+
+	BL reset_board_and_pellets
+	BL reset_pacman_and_ghosts
+	BL output_board
+	BL output_pacman_and_ghosts
+
+	B main_loop
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
 
 
 	.end
