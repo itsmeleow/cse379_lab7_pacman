@@ -32,6 +32,14 @@ cursor_save:	.string 27, "[s", 0
 cursor_restore: .string 27, "[u", 0
 display_erase:	.string 27, "[2J", 27, "[H", 0		; erase display and set cursor to (0,0)
 
+; displayed in middle of the board when ready/pause/blank (game started)
+ready_text:		.string 27, "[18;12HREADY!", 0
+paused_text:	.string 27, "[18;12HPAUSED", 0
+blank_text:		.string 27, "[18;12H      ", 0
+
+score_label:	.string 27, "[33;1HSCORE: 0000", 0
+
+
 pacman_loc:				.word 657	; pacman current location on board
 blinky_loc:				.word 376	; blinky current location on board
 pinky_loc:				.word 379	; pinky current location on board
@@ -200,7 +208,7 @@ board:
 paused:				.byte 0	; stores game pause state
 								; 0 - not paused
 								; 1 - paused
-score:				.byte 0 ; user score
+score:				.word 0 ; user score
 lives:				.byte 0 ; user lives
 pwr_tmr:		    .byte 0 ; timer for power pellet
 timer_tick:			.byte 0	; used for if timer refresh occurs
@@ -301,6 +309,10 @@ ptr_to_lookup_old_char_loc:		.word lookup_old_char_loc
 ptr_to_board_template:			.word board_template
 ptr_to_board:					.word board
 
+ptr_to_ready_text:	.word ready_text
+ptr_to_paused_text:	.word paused_text
+ptr_to_blank_text:	.word blank_text
+ptr_to_score_label:	.word score_label
 
 ; ptr to pacman and all ghost locations
 ptr_to_pacman_loc:		.word pacman_loc
@@ -327,6 +339,7 @@ ptr_to_pellets_remain: 	.word pellets_remain
 ptr_to_num_ghost_eaten:	.word num_ghost_eaten
 
 
+
 lab7:
 	PUSH {r4-r12, lr}
 
@@ -338,6 +351,13 @@ lab7:
 	; output initial board
 	BL reset_board_and_pellets
 	BL output_board
+
+	; print ready text in middle of board
+	LDR r0, ptr_to_ready_text
+	BL output_string
+
+	LDR r0, ptr_to_score_label
+	BL output_string
 
 	; Set lives to 4, use Mask
 	MOV r4, #0x0F
@@ -380,8 +400,11 @@ main_loop:
 
 	BL save_old_char_locs
 	BL set_pacman_loc
+	BL check_ghost_touched
 	BL set_all_ghost_locs
+	BL check_ghost_touched
 	BL output_pacman_and_ghosts
+	BL display_score
 
 	B main_loop
 
@@ -452,8 +475,6 @@ reset_pacman_and_ghosts:
 	MOV r5, #clyde_start_loc
 	STR r5, [r4]
 
-	BL output_pacman_and_ghosts
-
 	POP {r4-r12, lr}
 	MOV pc, lr
 
@@ -483,6 +504,7 @@ save_old_char_loc_loop:
 
 	POP {r4-r12, lr}
 	MOV pc, lr
+
 
 
 
@@ -542,6 +564,10 @@ test_valid_check:
 	LDRB r8, [r8, r7]
 	CMP r8, #1
 	BEQ test_dir_failed
+	; check if the space is a GHOST GATE or value = 5 on board array
+	CMP r8, #5
+	BEQ test_dir_failed
+
 
 	STR r7, [r4]				; since the location is valid, store in pacman_loc
 
@@ -566,7 +592,7 @@ ate_normal_pellet:
     SUB r10, r10, #1
     STR r10, [r11]
 
-    ; INCREMENT OUR SCORE HERE
+    BL score_10_points
     CMP r10, #0
     BEQ NEXT_STAGE
     B no_pellets
@@ -582,6 +608,7 @@ ate_power_pellet:
     SUB r10, r10, #1
     STR r10, [r11]
 
+	BL score_10_points
     BL GAIN_POWER
 
     CMP r10, #0
@@ -617,7 +644,6 @@ set_pacman_loc_done:
 
 
 
-; REWRITE THIS
 ; set one ghost location using its current direction first
 ; if current direction is invalid, try other directions
 ; do not allow, reverse unless no other direction works
@@ -818,6 +844,57 @@ set_all_ghost_locs:
 	MOV pc, lr
 
 
+
+
+; check if pacman touches any of the ghosts
+; if power pellet is active, the ghost gets eaten and gets reset back to starting location
+; if power pellet is NOT active, pacman loses a life
+check_ghost_touched:
+	PUSH {r4-r12, lr}
+
+	LDR r4, ptr_to_pacman_loc
+	LDR r4, [r4]					; r4 will hold pacmans location
+
+	; check pacmans location compared to the ghost locations
+
+	LDR r5, ptr_to_blinky_loc
+	LDR r5, [r5]
+	CMP r4, r5
+	BEQ pacman_touched_ghost
+
+	LDR r5, ptr_to_blinky_loc
+	LDR r5, [r5]
+	CMP r4, r5
+	BEQ pacman_touched_ghost
+
+	LDR r5, ptr_to_blinky_loc
+	LDR r5, [r5]
+	CMP r4, r5
+	BEQ pacman_touched_ghost
+
+	LDR r5, ptr_to_blinky_loc
+	LDR r5, [r5]
+	CMP r4, r5
+	BEQ pacman_touched_ghost
+
+	B check_ghost_touched_done
+
+; if pacman location = any of the ghost loc
+pacman_touched_ghost:
+	; check if power pellet active
+	LDR r6, ptr_to_pwr_active
+	LDRB r6, [r6]				; if 1, pwr pellet is active
+	CMP r6, #1
+	BEQ check_ghost_touched_done
+	BL LOSE_LIFE				; if 0, lose a life
+
+;  WE ADD POINTS BASED ON HOW MANY GHOSTS EATEN HERE (TO-DOOO) -------------------------------------------------------------------------------------
+
+
+check_ghost_touched_done:
+
+	POP {r4-r12, lr}
+	MOV pc, lr
 
 
 ; reset ANSI styling (background and foreground coloring)
@@ -1082,10 +1159,14 @@ Switch_Handler:
 	BNE resume_game
 
 pause_game:
+	LDR r0, ptr_to_paused_text
+	BL output_string
 	BL pause_timer
 	B switch_done
 
 resume_game:
+	LDR r0, ptr_to_blank_text
+	BL output_string
 	BL enable_timer
 
 switch_done:
@@ -1116,6 +1197,54 @@ Timer_Handler:
 score_10_points:
 	PUSH {r4-r12, lr}
 
+	LDR r4, ptr_to_score
+	LDR r5, [r4]
+	ADD r5, r5, #10
+	STR r5, [r4]
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+display_score:
+	PUSH {r4-r12, lr}
+
+	LDR r4, ptr_to_score
+	LDR r5, [r4]			; r5 holds the total score
+
+	; thousands
+	MOV r6, #1000
+	UDIV r7, r5, r6
+	MUL r8, r7, r6
+	SUB r5, r5, r8
+	ADD r7, r7, #0x30
+
+	; hundreds
+	MOV r6, #100
+	UDIV r8, r5, r6
+	MUL r9, r8, r6
+	SUB r5, r5, r9
+	ADD r8, r8, #0x30
+
+	; tens
+	MOV r6, #10
+	UDIV r9, r5, r6
+	MUL r10, r9, r6
+	SUB r5, r5, r10
+	ADD r9, r9, #0x30
+
+	; ones
+	ADD r5, r5, #0x30
+
+	LDR r10, ptr_to_score_label
+	STRB r7, [r10, #14]
+	STRB r8, [r10, #15]
+	STRB r9, [r10, #16]
+	STRB r5, [r10, #17]
+
+	MOV r0, r10
+	BL output_string
 
 	POP {r4-r12, lr}
 	MOV pc, lr
@@ -1134,9 +1263,12 @@ LOSE_LIFE: ; Checks how many lives, then removes a life
 	LSR r5, r5, #1			; Shift right 1 byte, changes mask for LEDs
 	STRB r5, [r4]			; Store the new lives count
 
+	BL reset_pacman_and_ghosts
+
 	MOV pc, lr
 
-POINTS: ; Point counter
+
+
 
 GAIN_POWER: ; Indicate when power pellet is active
 	PUSH {r4-r12, lr}
@@ -1149,7 +1281,7 @@ GAIN_POWER: ; Indicate when power pellet is active
 	STRB r6, [r5]			; Set power to 1, = power activated
 	LDR r5, ptr_to_pwr_tmr
 	MOV r6, #60
-	STRB r6, [r5]			; Set timer to 50 ticks (15 seconds), resets everytime power eaten
+	STRB r6, [r5]			; Set timer to 60 ticks (15 seconds), resets everytime power eaten
 
 	BL turn_blue_led_on
 
@@ -1158,6 +1290,10 @@ GAIN_POWER: ; Indicate when power pellet is active
 	POP {r4-r12, lr}
 	MOV pc, lr
 
+
+
+
+; decrement the power pellet timer
 DECREMENT_COUNTER:
 	PUSH {r4-r12, lr}
 
@@ -1180,7 +1316,7 @@ STILLACTIVE:					; Decrement power timer
 	CMP r10, #10				; Checks if 5 seconds left (>10 ticks)
 	BGT DECREMENT_DONE
 
-
+	BL turn_all_led_off
 	BL turn_red_led_on
 
 DECREMENT_DONE:
@@ -1207,8 +1343,6 @@ NEXT_STAGE:
 	BL reset_pacman_and_ghosts
 	BL output_board
 	BL output_pacman_and_ghosts
-
-	B main_loop
 
 	POP {r4-r12, lr}
 	MOV pc, lr
