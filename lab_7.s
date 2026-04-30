@@ -379,6 +379,10 @@ lab7:
 	; we initialize pacman to starting x and y location
 	BL reset_pacman_and_ghosts
 
+	; delete the ready text
+	LDR r0, ptr_to_blank_text
+	BL output_string
+
 ; this will be where our main game logic is and will keep on looping
 main_loop:
 
@@ -860,41 +864,110 @@ check_ghost_touched:
 	LDR r5, ptr_to_blinky_loc
 	LDR r5, [r5]
 	CMP r4, r5
-	BEQ pacman_touched_ghost
+	BEQ pacman_touched_blinky
 
-	LDR r5, ptr_to_blinky_loc
+	LDR r5, ptr_to_pinky_loc
 	LDR r5, [r5]
 	CMP r4, r5
-	BEQ pacman_touched_ghost
+	BEQ pacman_touched_pinky
 
-	LDR r5, ptr_to_blinky_loc
+	LDR r5, ptr_to_inky_loc
 	LDR r5, [r5]
 	CMP r4, r5
-	BEQ pacman_touched_ghost
+	BEQ pacman_touched_inky
 
-	LDR r5, ptr_to_blinky_loc
+	LDR r5, ptr_to_clyde_loc
 	LDR r5, [r5]
 	CMP r4, r5
-	BEQ pacman_touched_ghost
+	BEQ pacman_touched_clyde
 
 	B check_ghost_touched_done
 
 ; if pacman location = any of the ghost loc
-pacman_touched_ghost:
-	; check if power pellet active
+; for each of the ghosts, check if the pwr pellet is active
+; if it is, the ghost gets eaten
+; if it is not, pacman loses a life then check_ghost_touched finishes
+pacman_touched_blinky:
 	LDR r6, ptr_to_pwr_active
-	LDRB r6, [r6]				; if 1, pwr pellet is active
+	LDRB r6, [r6]
 	CMP r6, #1
-	BEQ check_ghost_touched_done
-	BL LOSE_LIFE				; if 0, lose a life
+	BEQ eat_blinky
+	BL LOSE_LIFE
+	B check_ghost_touched_done
 
-;  WE ADD POINTS BASED ON HOW MANY GHOSTS EATEN HERE (TO-DOOO) -------------------------------------------------------------------------------------
+eat_blinky:
+	LDR r5, ptr_to_blinky_loc
+	MOV r6, #blinky_start_loc
+	STR r6, [r5]
+	LDR r5, ptr_to_blinky_dir
+	MOV r6, #0
+	STRB r6, [r5]
+	BL add_ghost_points
+	B check_ghost_touched_done
+
+
+pacman_touched_pinky:
+	LDR r6, ptr_to_pwr_active
+	LDRB r6, [r6]
+	CMP r6, #1
+	BEQ eat_pinky
+	BL LOSE_LIFE
+	B check_ghost_touched_done
+
+eat_pinky:
+	LDR r5, ptr_to_pinky_loc
+	MOV r6, #pinky_start_loc
+	STR r6, [r5]
+	LDR r5, ptr_to_pinky_dir
+	MOV r6, #0
+	STRB r6, [r5]
+	BL add_ghost_points
+	B check_ghost_touched_done
+
+
+pacman_touched_inky:
+	LDR r6, ptr_to_pwr_active
+	LDRB r6, [r6]
+	CMP r6, #1
+	BEQ eat_inky
+	BL LOSE_LIFE
+	B check_ghost_touched_done
+
+eat_inky:
+	LDR r5, ptr_to_inky_loc
+	MOV r6, #inky_start_loc
+	STR r6, [r5]
+	LDR r5, ptr_to_inky_dir
+	MOV r6, #0
+	STRB r6, [r5]
+	BL add_ghost_points
+	B check_ghost_touched_done
+
+
+pacman_touched_clyde:
+	LDR r6, ptr_to_pwr_active
+	LDRB r6, [r6]
+	CMP r6, #1
+	BEQ eat_clyde
+	BL LOSE_LIFE
+	B check_ghost_touched_done
+
+eat_clyde:
+	LDR r5, ptr_to_clyde_loc
+	MOV r6, #clyde_start_loc
+	STR r6, [r5]
+	LDR r5, ptr_to_clyde_dir
+	MOV r6, #0
+	STRB r6, [r5]
+	BL add_ghost_points
+	B check_ghost_touched_done
 
 
 check_ghost_touched_done:
-
 	POP {r4-r12, lr}
 	MOV pc, lr
+
+
 
 
 ; reset ANSI styling (background and foreground coloring)
@@ -1193,6 +1266,7 @@ Timer_Handler:
 
 
 
+
 ; scoring subroutines
 score_10_points:
 	PUSH {r4-r12, lr}
@@ -1207,6 +1281,50 @@ score_10_points:
 
 
 
+
+; add points from eating ghosts based on how many ghosts have been eaten
+add_ghost_points:
+	PUSH {r4-r12, lr}
+
+	LDR r4, ptr_to_num_ghost_eaten
+	LDRB r5, [r4]			; how many ghosts already eaten during this power pellet
+
+	MOV r6, #100
+	CMP r5, #1
+	BEQ add_200
+	CMP r5, #2
+	BEQ add_400
+	CMP r5, #3
+	BEQ add_800
+	B ghost_add_score
+
+add_200:
+	MOV r6, #200
+	B ghost_add_score
+
+add_400:
+	MOV r6, #400
+	B ghost_add_score
+
+add_800:
+	MOV r6, #800
+
+ghost_add_score:
+	LDR r7, ptr_to_score
+	LDR r8, [r7]
+	ADD r8, r8, r6
+	STR r8, [r7]
+
+	ADD r5, r5, #1
+	STRB r5, [r4]
+
+	POP {r4-r12, lr}
+	MOV pc, lr
+
+
+
+
+; display score on putty
 display_score:
 	PUSH {r4-r12, lr}
 
@@ -1275,6 +1393,11 @@ GAIN_POWER: ; Indicate when power pellet is active
 
 	MOV r4, #0x5000 		; Base address of PORT F
 	MOVT r4, #0x4002
+
+	LDR r5, ptr_to_num_ghost_eaten		; reset the number of ghosts eaten
+	MOV r6, #0
+	STRB r6, [r5]
+
 
 	LDR r5, ptr_to_pwr_active
 	MOV r6, #1
