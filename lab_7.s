@@ -404,15 +404,6 @@ lab7:
 	LDR r0, ptr_to_blank_text
 	BL output_string
 
-	; reset the number of ghosts released
-	LDR r4, ptr_to_ghosts_released
-	MOV r5, #1			; we have 1 ghost initially out
-	STRB r5, [r4]
-
-	LDR r4, ptr_to_ghost_release_tmr
-	MOV r5, #0
-	STRB r5, [r4]
-
 	LDR r4, ptr_to_blinky_loc
 	MOV r5, #blinky_free_loc
 	STR r5, [r4]
@@ -514,6 +505,15 @@ reset_pacman_and_ghosts:
 	LDR r4, ptr_to_clyde_loc
 	MOV r5, #clyde_start_loc
 	STR r5, [r4]
+
+	; reset the number of ghosts released
+	LDR r4, ptr_to_ghosts_released
+	MOV r5, #1			; we have 1 ghost initially out
+	STRB r5, [r4]
+
+	LDR r4, ptr_to_ghost_release_tmr
+	MOV r5, #0
+	STRB r5, [r4]
 
 	POP {r4-r12, lr}
 	MOV pc, lr
@@ -1494,7 +1494,7 @@ display_score:
 
 LOSE_LIFE: ; Checks how many lives, then removes a life
 	; Add some sort of pause when life taken
-
+	PUSH {r4-r12, lr}
 	LDR r4, ptr_to_lives
 	LDRB r5, [r4]
 	CMP r5, #2				; Check if lives are <= 1
@@ -1505,6 +1505,7 @@ LOSE_LIFE: ; Checks how many lives, then removes a life
 
 	BL reset_pacman_and_ghosts
 
+	POP {r4-r12, lr}
 	MOV pc, lr
 
 
